@@ -18,6 +18,7 @@ CATEGORY_COLL  = os.getenv("CATEGORY_COLL")
 TAGS_COLL      = os.getenv("TAGS_COLL")
 USERS_COLL     = os.getenv("USERS_COLL")
 ARTICLES_COLL  = os.getenv("ARTICLES_COLL")
+SITE  = os.getenv("SITE")
 OPENAIAPIKEY   = os.getenv("OPENAIAPIKEY")
 AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME") or "adminUser"  # fallback
 
@@ -395,7 +396,7 @@ def main():
     <p>Se ha publicado un nuevo artículo:</p>
     <ul>
       <li><b>Título:</b> {title}</li>
-      <li><b>Slug:</b> {slug}</li>
+      <li><b>Slug:</b> {SITE}/post/{slug}</li>
       <li><b>Fecha:</b> {now.isoformat()}</li>
     </ul>
     <p>Saludos.</p>
