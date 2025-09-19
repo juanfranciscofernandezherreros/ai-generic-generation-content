@@ -82,6 +82,18 @@ def now_utc():
     return datetime.now(tz=timezone.utc)
 
 # ========= Dominio categorías/tags =========
+def index_tags(tags):
+    """NUEVO: índices útiles de tags por _id y por nombre/tag."""
+    by_id = {}
+    by_name = {}
+    for t in tags:
+        tid = str_id(t.get("_id"))
+        by_id[tid] = t
+        nm = (t.get("name") or t.get("tag") or "").strip()
+        if nm:
+            by_name[nm] = t
+    return by_id, by_name
+
 def get_related_tags_for_category(subcat, tags, tags_by_id, tags_by_name):
     related = []
     # claves directas
@@ -320,6 +332,53 @@ def guess_parent_and_subcat_for_tag(tag, categories, by_id, by_parent):
     subcat = random.choice(children) if children else None
     return parent, subcat
 
+# ============ NUEVO: selección aleatoria de subcategoría con tags + tag sin artículo ============
+def find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name):
+    """Devuelve lista de subcategorías que tienen al menos 1 tag relacionado."""
+    subcats_with_tags = []
+    for parent_id, subs in by_parent.items():
+        if parent_id is None:
+            # este entry son categorías raíz; buscamos en sus hijos reales
+            continue
+        for sc in subs:
+            rel = get_related_tags_for_category(sc, tags, tags_by_id, tags_by_name)
+            if rel:
+                subcats_with_tags.append((parent_id, sc, rel))
+    return subcats_with_tags
+
+def pick_random_subcat_and_tag_without_article(db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name):
+    """
+    Elige aleatoriamente una subcategoría con tags, y dentro selecciona
+    un tag que NO tenga aún artículos. Si todos tienen, prueba con otra subcategoría.
+    """
+    candidates = find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name)
+    random.shuffle(candidates)
+
+    for parent_id, subcat, rel_tags in candidates:
+        random.shuffle(rel_tags)
+        # descarta tags que ya tienen artículo
+        for t in rel_tags:
+            tid = ObjectId(str_id(t.get("_id")))
+            exists = db[ARTICLES_COLL].find_one({"tags": tid})
+            if not exists:
+                parent = by_id.get(parent_id) if parent_id else None
+                return parent, subcat, t
+
+    # Fallback: si todos tenían artículo, devolvemos cualquier (parent, subcat, tag) aleatorio
+    if candidates:
+        parent_id, subcat, rel_tags = random.choice(candidates)
+        t = random.choice(rel_tags)
+        parent = by_id.get(parent_id) if parent_id else None
+        return parent, subcat, t
+
+    # Último recurso: mantener la heurística antigua
+    if tags:
+        t = random.choice(tags)
+        parent, subcat = guess_parent_and_subcat_for_tag(t, categories, by_id, by_parent)
+        return parent, subcat, t
+
+    return None, None, None
+
 def get_recent_titles(db, limit=50):
     cur = db[ARTICLES_COLL].find({}, {"title": 1}).sort("createdAt", -1).limit(limit)
     titles = [d.get("title", "") for d in cur if d.get("title")]
@@ -539,6 +598,7 @@ def main():
 
     # Índices/jerarquía
     by_id, by_parent = build_hierarchy(categories)
+    tags_by_id, tags_by_name = index_tags(tags)  # NUEVO
 
     # Títulos recientes para control de parecido
     recent_titles = get_recent_titles(db, limit=50)
@@ -546,26 +606,27 @@ def main():
     # Cliente OpenAI
     client_ai = OpenAI(api_key=OPENAIAPIKEY)
 
-    # Para no repetir siempre el mismo orden de tags
-    random.shuffle(tags)
+    # ===== NUEVO: elegir aleatoriamente una subcategoría con tags y un tag sin artículo =====
+    parent, subcat, tag = pick_random_subcat_and_tag_without_article(
+        db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name
+    )
 
-    created_count = 0
-    for tag in tags:
-        parent, subcat = guess_parent_and_subcat_for_tag(tag, categories, by_id, by_parent)
-        if parent is None or subcat is None:
-            print("⚠️ No se pudo deducir (padre, subcategoría) de forma fiable; se usará fallback aleatorio.")
+    if not tag:
+        print("❌ No se pudo seleccionar (subcategoría, tag) para generar un artículo.", file=sys.stderr)
+        sys.exit(1)
 
-        try:
-            created = ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id)
-            if created:
-                created_count += 1
-                print("\n🟦 Límite semanal alcanzado (1). Proceso detenido.")
-                break   # solo 1 artículo por semana
-        except Exception as e:
-            print(f"❌ Error generando/insertando para tag '{tag_name(tag)}': {e}", file=sys.stderr)
-            continue
+    # Publica exactamente 1 artículo (cumpliendo el límite semanal ya comprobado)
+    created = False
+    try:
+        created = ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id)
+    except Exception as e:
+        print(f"❌ Error generando/insertando para tag '{tag_name(tag)}': {e}", file=sys.stderr)
 
-    print(f"\n🟩 Proceso terminado. Artículos creados: {created_count}")
+    if created:
+        print("\n🟦 Límite semanal alcanzado (1). Proceso detenido.")
+        print("\n🟩 Proceso terminado. Artículos creados: 1")
+    else:
+        print("\n🟩 Proceso terminado. Artículos creados: 0 (posiblemente ya existía para ese tag)")
 
 if __name__ == "__main__":
     main()
