@@ -33,6 +33,10 @@ SMTP_PASS   = os.getenv("SMTP_PASS")
 FROM_EMAIL  = os.getenv("FROM_EMAIL") or (SMTP_USER or "")
 TO_EMAIL    = os.getenv("NOTIFY_EMAIL") or "jnfz92@gmail.com"
 NOTIFY_VERBOSE = (os.getenv("NOTIFY_VERBOSE", "true").lower() in ("1","true","yes","y"))
+# Controla si se limita a 1 artículo por semana (true) o se permite publicar siempre (false)
+LIMIT_PUBLICATION = (os.getenv("LIMIT_PUBLICATION", "true").lower() in ("1", "true", "yes", "y"))
+# Si es true, enviará por email el prompt de generación antes de llamar a OpenAI
+SEND_PROMPT_EMAIL = (os.getenv("SEND_PROMPT_EMAIL", "false").lower() in ("1", "true", "yes", "y"))
 
 # ============ HELPERS ============
 def str_id(x):
@@ -89,6 +93,14 @@ def is_too_similar(title: str, candidates: list, threshold: float = 0.82) -> boo
 
 def now_utc():
     return datetime.now(tz=timezone.utc)
+
+def html_escape(s: str) -> str:
+    """Escapa &, <, > para HTML simple en correos."""
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+    )
 
 # ========= Notificaciones / logging =========
 def send_notification_email(subject: str, html_body: str, text_body: str = None):
@@ -188,9 +200,9 @@ def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, a
     avoid_titles = avoid_titles or []
     avoid_block = ""
     if avoid_titles:
-        avoid_list = [t.replace('"', '\\"') for t in avoid_titles[:5]]
+        avoid_list = [t.replace('"', '\"') for t in avoid_titles[:5]]
         avoid_block = (
-            "\\n- Evita usar títulos iguales o muy similares a cualquiera de estos: "
+            "\n- Evita usar títulos iguales o muy similares a cualquiera de estos: "
             + "; ".join(f'"{t}"' for t in avoid_list)
         )
     return f"""
@@ -209,7 +221,7 @@ Reglas:
   - <h1> con el título (sin emojis en el h1).
   - Introducción breve (<p>).
   - 3-5 secciones <h2> con explicación técnica y buenas prácticas.
-  - Cuando proceda, ejemplos de código reales en <pre><code class="language-..."> ... </code></pre>.
+  - Cuando proceda, ejemplos de código reales en <pre><code class=\\"language-...\\"> ... </code></pre>.
   - Una sección "Preguntas frecuentes (FAQ)" con 3-5 <h3> preguntas y respuestas <p>.
   - Una breve conclusión con llamada a la acción (CTA).
 - El contenido debe ser original, correcto y usable.
@@ -217,27 +229,16 @@ Reglas:
 - Escapa correctamente comillas para que sea JSON válido.{avoid_block}
 """
 
-def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
-    resp = client_ai.responses.create(
-        model=OPENAI_MODEL,
-        input=build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
-    )
-    raw = resp.output_text.strip()
-    try:
-        data = json.loads(raw)
-    except Exception:
-        start = raw.find("{"); end = raw.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            data = json.loads(raw[start:end+1])
-        else:
-            raise ValueError("La respuesta de OpenAI no es JSON válido:\n" + raw)
-
-    title = str(data.get("title", "")).strip()
-    summary = str(data.get("summary", "")).strip()
-    body = str(data.get("body", "")).strip()
-    if not title or not body:
-        raise ValueError("Faltan 'title' o 'body' en la respuesta de OpenAI.")
-    return title, summary, body
+def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
+    """
+    Construye el prompt y lo envía por email usando SMTP ya configurado.
+    NO intenta parsear ninguna respuesta de OpenAI (solo notifica).
+    Devuelve el prompt por si quieres loguearlo.
+    """
+    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+    html = f"<h3>Prompt de generación</h3><p>Se envía el prompt que se usará con OpenAI:</p><pre style=\"white-space:pre-wrap; word-break:break-word;\">{html_escape(prompt)}</pre>"
+    send_notification_email(subject="Prompt de generación", html_body=html, text_body=prompt)
+    return prompt
 
 def find_author_id(db) -> ObjectId:
     """Busca el usuario fijo 'adminUser' (o el de entorno) en la colección de usuarios."""
@@ -259,26 +260,29 @@ def find_author_id(db) -> ObjectId:
         uid = ObjectId(str(uid))
     return uid
 
-# ======== NUEVO: helper para saber si un tag ya tiene artículos publicados ========
+# ======== Cobertura / helpers ========
 def tag_has_published_article(db, tag) -> bool:
-    """
-    Devuelve True si ya existe al menos un artículo publicado para este tag.
-    """
+    """True si ya existe al menos un artículo published para este tag."""
     try:
         tag_id = ObjectId(str_id(tag.get("_id")))
     except Exception:
         return False
-    return db[ARTICLES_COLL].count_documents({
-        "tags": tag_id,
-        "status": "published"
-    }) > 0
+    return db[ARTICLES_COLL].count_documents({"tags": tag_id, "status": "published"}) > 0
 
-# ============ NUEVO: ventana "semana actual" (Europa/Madrid) ============
+def category_has_published_article(db, category) -> bool:
+    """True si ya existe al menos un artículo published para esta categoría/subcategoría."""
+    try:
+        cat_id = ObjectId(str_id(category.get("_id")))
+    except Exception:
+        return False
+    return db[ARTICLES_COLL].count_documents({"category": cat_id, "status": "published"}) > 0
+
+def find_categories_without_article(db, categories):
+    """Devuelve categorías/subcategorías que aún no tienen artículos publicados."""
+    return [c for c in categories if not category_has_published_article(db, c)]
+
+# ============ Ventana "semana actual" (Europa/Madrid) ============
 def current_week_window_utc_for_madrid(start_weekday: int = 1):
-    """
-    Devuelve (inicio_utc, fin_utc) de la semana actual en Europe/Madrid.
-    start_weekday: 1=lunes ... 7=domingo (por defecto lunes a domingo).
-    """
     tz_madrid = ZoneInfo("Europe/Madrid")
     today = datetime.now(tz_madrid).date()
     weekday = today.isoweekday()  # 1-7
@@ -288,7 +292,6 @@ def current_week_window_utc_for_madrid(start_weekday: int = 1):
     return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
 def today_window_utc_for_madrid():
-    """Devuelve (inicio_utc, fin_utc) del día actual en Europa/Madrid."""
     tz_madrid = ZoneInfo("Europe/Madrid")
     today_madrid = datetime.now(tz_madrid).date()
     start_madrid = datetime.combine(today_madrid, time(0, 0), tzinfo=tz_madrid)
@@ -361,11 +364,11 @@ def find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name
     """
     Devuelve lista de (parent_id, subcat, rel_tags) con:
       - Subcategorías (categorías con parent) que tengan tags relacionados.
-      - Categorías SIN hijos pero con tags relacionados (permitiendo publicar sin subcategorías).
+      - Categorías SIN hijos pero con tags relacionados.
     """
     subcats_with_tags = []
 
-    # 1) Subcategorías normales (tienen padre)
+    # 1) Subcategorías (tienen padre)
     for parent_id, subs in by_parent.items():
         if parent_id is None:
             continue
@@ -374,48 +377,69 @@ def find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name
             if rel:
                 subcats_with_tags.append((parent_id, sc, rel))
 
-    # 2) Categorías sin hijos (no aparecen como clave padre) que tengan tags asociados
-    #    Esto permite publicar aunque no existan subcategorías.
-    parent_ids = set(by_parent.keys()) - {None}
-    categories_with_children = {pid for pid in parent_ids if pid is not None}
+    # 2) Categorías sin hijos con tags
     for c in categories:
         cid = str_id(c.get("_id"))
-        if cid not in by_parent:  # no tiene subcategorías registradas
+        if cid not in by_parent:
             rel = get_related_tags_for_category(c, tags, tags_by_id, tags_by_name)
             if rel:
-                # parent_id = None, usamos la propia categoría como "subcat" destino
                 subcats_with_tags.append((None, c, rel))
 
     return subcats_with_tags
 
-# ======= Selección: elegir SOLO tags sin artículos publicados =========
-def pick_random_subcat_and_tag_without_article(db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name):
+# ======= Selector ESTRICTO =======
+def pick_fresh_target_strict(db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name):
     """
-    Elige aleatoriamente (parent, subcat, tag) tal que el tag NO tenga artículos publicados.
-    Si no queda ningún tag disponible, devuelve (None, None, None).
+    Devuelve (parent, subcat, tag) cumpliendo:
+      - tag SIN artículos publicados
+      - subcategoría SIN artículos publicados
+      - categoría padre (si existe) SIN artículos publicados
+
+    Si no hay ningún candidato con tag que cumpla, intenta publicación SIN tag:
+      - subcategoría SIN artículos y padre SIN artículos (o categoría raíz SIN artículos)
+
+    Si no hay nada que cumpla → (None, None, None).
     """
+    # 1) Con tags, cumpliendo regla estricta
     candidates = find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name)
     random.shuffle(candidates)
-
-    # Intentar primero por nodos con tags disponibles (sin artículos publicados)
     for parent_id, subcat, rel_tags in candidates:
+        parent = by_id.get(parent_id) if parent_id else None
+        if subcat and category_has_published_article(db, subcat): 
+            continue
+        if parent and category_has_published_article(db, parent): 
+            continue
         available_tags = [t for t in rel_tags if not tag_has_published_article(db, t)]
         if not available_tags:
             continue
         random.shuffle(available_tags)
         t = random.choice(available_tags)
-        parent = by_id.get(parent_id) if parent_id else None
         return parent, subcat, t
 
-    # Si no encontramos por candidatos, probar con el universo global de tags
-    available_global = [t for t in tags if not tag_has_published_article(db, t)]
-    if available_global:
-        t = random.choice(available_global)
-        parent, subcat = guess_parent_and_subcat_for_tag(t, categories, by_id, by_parent)
-        return parent, subcat, t
+    # 2) SIN tag
+    cats_wo_article = find_categories_without_article(db, categories)
+    random.shuffle(cats_wo_article)
+    for c in cats_wo_article:
+        if c.get("parent"):
+            parent = by_id.get(str_id(c.get("parent")))
+            if parent and category_has_published_article(db, parent):
+                continue
+            return parent, c, None
+        else:
+            return c, None, None
 
-    # No queda nada disponible
+    # 3) Nada
     return None, None, None
+
+# ======== construir texto de tema ========
+def build_topic_text(parent, subcat, tag):
+    if tag:
+        return tag_name(tag)
+    if subcat and (subcat.get("name") or subcat.get("title")):
+        return str(subcat.get("name") or subcat.get("title"))
+    if parent and (parent.get("name") or parent.get("title")):
+        return str(parent.get("name") or parent.get("title"))
+    return "General"
 
 def get_recent_titles(db, limit=50):
     cur = db[ARTICLES_COLL].find({}, {"title": 1}).sort("createdAt", -1).limit(limit)
@@ -431,20 +455,110 @@ def get_recent_titles(db, limit=50):
         return final[:limit]
     return titles
 
-def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id):
-    """Genera e inserta un artículo para un tag. Devuelve True si creó algo."""
-    tag_id = ObjectId(str_id(tag.get("_id")))
+# ====== Utilidades de parseo/IA ======
+def _extract_json_block(text: str) -> str:
+    """
+    Extrae el primer bloque que parezca JSON del texto (soporta ```json ... ``` o texto suelto).
+    """
+    if not text:
+        return ""
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fence:
+        return fence.group(1).strip()
+    brace = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    return brace.group(0).strip() if brace else text.strip()
 
-    # Info de títulos existentes (por robustez), aunque el tag se ha filtrado sin artículos publicados
-    existing_for_tag = list(db[ARTICLES_COLL].find({"tags": tag_id}, {"title": 1}))
-    existing_titles_for_tag = [d.get("title", "") for d in existing_for_tag if d.get("title")]
+def _safe_json_loads(s: str) -> dict:
+    try:
+        return json.loads(s)
+    except Exception:
+        s2 = s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2019", "'")
+        return json.loads(s2)
+
+def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
+    """
+    Llama a OpenAI para generar el artículo. Devuelve (title, summary, body).
+    Soporta SDK nuevo (responses.create) y el anterior (chat.completions.create).
+    """
+    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+
+    raw_text = None
+    # 1) Intento con API moderna
+    try:
+        resp = client_ai.responses.create(model=OPENAI_MODEL, input=prompt)
+        raw_text = getattr(resp, "output_text", None)
+        if not raw_text and hasattr(resp, "content") and resp.content:
+            for c in resp.content:
+                if getattr(c, "type", None) in (None, "output_text"):
+                    raw_text = getattr(c, "text", None)
+                    if raw_text:
+                        break
+    except Exception:
+        raw_text = None
+
+    # 2) Fallback: Chat Completions
+    if not raw_text:
+        try:
+            chat = client_ai.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "Eres un redactor técnico que devuelve estrictamente JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+            )
+            raw_text = chat.choices[0].message.content
+        except Exception as e:
+            raise RuntimeError(f"Fallo llamando a OpenAI: {e}")
+
+    if not raw_text:
+        raise RuntimeError("OpenAI no devolvió contenido.")
+
+    json_text = _extract_json_block(raw_text)
+    data = _safe_json_loads(json_text)
+
+    title = str(data.get("title", "")).strip()
+    summary = str(data.get("summary", "")).strip()
+    body = str(data.get("body", "")).strip()
+
+    if not title or not body:
+        raise ValueError("La respuesta de OpenAI no contiene 'title' y/o 'body'.")
+
+    # Asegura <h1> acorde al título si falta
+    if "<h1" not in body.lower():
+        safe_title = html_escape(title)
+        body = f'<h1>{safe_title}</h1>\n' + body
+
+    return title, summary, body
+
+def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id):
+    """Genera e inserta un artículo. Se asume que parent/subcat/tag ya cumplen la regla estricta."""
+    tag_id = None
+    existing_titles_for_tag = []
+
+    if tag:
+        try:
+            tag_id = ObjectId(str_id(tag.get("_id")))
+        except Exception:
+            tag_id = None
+        if tag_id:
+            existing_for_tag = list(db[ARTICLES_COLL].find({"tags": tag_id}, {"title": 1}))
+            existing_titles_for_tag = [d.get("title", "") for d in existing_for_tag if d.get("title")]
 
     parent_name = parent.get("name") if parent else (subcat.get("parentName") if subcat and subcat.get("parentName") else "General")
     subcat_name = subcat.get("name") if subcat else "General"
-    tag_text = tag_name(tag)
+    topic_text = build_topic_text(parent, subcat, tag)
 
-    # Evita títulos recientes y del mismo tag
+    # Evita títulos recientes y del mismo tag (si hay tag) — construir antes de enviar email o llamar a IA
     avoid_titles = (recent_titles[:10] if recent_titles else []) + existing_titles_for_tag[:20]
+
+    # Opcional: enviar el prompt por email antes de generar con OpenAI
+    if SEND_PROMPT_EMAIL:
+        try:
+            email_generation_prompt(parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
+            notify("Prompt enviado por email", "Se envió el prompt de generación a la dirección configurada.", level="info", always_email=False)
+        except Exception as e:
+            notify("Error enviando prompt por email", str(e), level="warning", always_email=True)
 
     max_attempts = 5
     attempt = 0
@@ -452,7 +566,7 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
 
     while attempt < max_attempts:
         attempt += 1
-        t, s, b = generate_article_with_ai(client_ai, parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+        t, s, b = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
         if is_too_similar(t, recent_titles[:20], threshold=0.86) or is_too_similar(t, existing_titles_for_tag, threshold=0.86):
             notify("Título similar detectado", f"Intento {attempt}: '{t}'. Reintentando...", level="warning", always_email=True)
             avoid_titles.append(t)
@@ -473,8 +587,11 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
         "slug": slug,
         "summary": summary,
         "body": body,
-        "category": ObjectId(str_id(subcat.get("_id"))) if subcat else None,
-        "tags": [tag_id],
+        "category": (
+            ObjectId(str_id(subcat.get("_id"))) if subcat
+            else (ObjectId(str_id(parent.get("_id"))) if parent else None)
+        ),
+        "tags": [tag_id] if tag_id else [],
         "author": author_id,
         "status": "published",
         "likes": [],
@@ -487,12 +604,12 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
         "images": None,
     }
 
-    # Inserta
     db[ARTICLES_COLL].insert_one(doc)
+    where_txt = f"Tag: {tag_name(tag)}" if tag else f"Tema (categoría/subcat): {topic_text}"
     notify("Artículo publicado",
-           f"Título: {title}<br>Slug: {SITE}/post/{slug if SITE else slug}<br>Tag: {tag_text} (id={str_id(tag.get('_id'))})",
+           f"Título: {title}<br>Slug: {SITE}/post/{slug if SITE else slug}<br>{where_txt}",
            level="success", always_email=True)
-    # actualiza recientes para ayudar al siguiente tag
+
     recent_titles.insert(0, title)
     if len(recent_titles) > 50:
         del recent_titles[50:]
@@ -526,34 +643,36 @@ def main():
         notify("Error de conexión a MongoDB", str(e), level="error", always_email=True)
         sys.exit(1)
 
-    # ===== Limitar a 1 artículo por semana (Europa/Madrid, lunes-domingo) =====
+    # ===== Control de límite semanal (Europa/Madrid, lunes-domingo) =====
     try:
-        start_utc, end_utc = current_week_window_utc_for_madrid(start_weekday=1)  # 1 = lunes
-        already_this_week = db[ARTICLES_COLL].count_documents({
-            "publishDate": {"$gte": start_utc, "$lt": end_utc},
-            "status": "published"
-        })
+        if LIMIT_PUBLICATION:
+            start_utc, end_utc = current_week_window_utc_for_madrid(start_weekday=1)  # 1 = lunes
+            already_this_week = db[ARTICLES_COLL].count_documents({
+                "publishDate": {"$gte": start_utc, "$lt": end_utc},
+                "status": "published"
+            })
 
-        if already_this_week >= 1:
-            last_doc = db[ARTICLES_COLL].find(
-                {"publishDate": {"$gte": start_utc, "$lt": end_utc}, "status": "published"},
-                {"title": 1, "slug": 1, "publishDate": 1}
-            ).sort("publishDate", -1).limit(1)
-            last_article = next(iter(last_doc), None)
-            if last_article:
-                last_title = last_article.get("title", "(sin título)")
-                last_slug  = last_article.get("slug", "")
-                last_date  = last_article.get("publishDate")
-                link = f"{SITE}/post/{last_slug}" if SITE and last_slug else last_slug
-                notify("Límite semanal alcanzado",
-                       f"Ya existe al menos un artículo esta semana.<br><b>Título:</b> {last_title}<br><b>Slug:</b> {link}<br><b>Fecha:</b> {last_date.isoformat() if last_date else 'N/D'}",
-                       level="warning", always_email=True)
-            else:
-                notify("Límite semanal alcanzado", "Ya existe al menos un artículo esta semana (no se pudo recuperar el detalle).", level="warning", always_email=True)
+            if already_this_week >= 1:
+                last_doc = db[ARTICLES_COLL].find(
+                    {"publishDate": {"$gte": start_utc, "$lt": end_utc}, "status": "published"},
+                    {"title": 1, "slug": 1, "publishDate": 1}
+                ).sort("publishDate", -1).limit(1)
+                last_article = next(iter(last_doc), None)
+                if last_article:
+                    last_title = last_article.get("title", "(sin título)")
+                    last_slug  = last_article.get("slug", "")
+                    last_date  = last_article.get("publishDate")
+                    link = f"{SITE}/post/{last_slug}" if SITE and last_slug else last_slug
+                    notify("Límite semanal alcanzado",
+                           f"Ya existe al menos un artículo esta semana.<br><b>Título:</b> {last_title}<br><b>Slug:</b> {link}<br><b>Fecha:</b> {last_date.isoformat() if last_date else 'N/D'}",
+                           level="warning", always_email=True)
+                else:
+                    notify("Límite semanal alcanzado", "Ya existe al menos un artículo esta semana (no se pudo recuperar el detalle).", level="warning", always_email=True)
 
-            print("🟨 Ya hay un artículo publicado esta semana. Se cancela la ejecución.")
-            sys.exit(0)   # cortar ejecución si ya hay uno esta semana
-
+                print("🟨 Ya hay un artículo publicado esta semana. Se cancela la ejecución (LIMIT_PUBLICATION=True).")
+                sys.exit(0)
+        else:
+            notify("Límite semanal desactivado", "LIMIT_PUBLICATION=false → se permitirá publicación incluso si ya hay artículos esta semana.", level="info", always_email=True)
     except Exception as e:
         notify("Error comprobando límite semanal", str(e), level="error", always_email=True)
         sys.exit(1)
@@ -569,10 +688,6 @@ def main():
 
     if not categories:
         notify("Sin categorías", "No hay categorías en la colección.", level="warning", always_email=True)
-        return
-
-    if not tags:
-        notify("Sin tags", "No hay tags en la colección.", level="warning", always_email=True)
         return
 
     # Autor
@@ -599,31 +714,34 @@ def main():
         notify("Error inicializando OpenAI", str(e), level="error", always_email=True)
         sys.exit(1)
 
-    # Elegir categoría/subcategoría y tag (SOLO tags sin artículos publicados)
-    parent, subcat, tag = pick_random_subcat_and_tag_without_article(
+    # ===== Selección ESTRICTA =====
+    parent, subcat, tag = pick_fresh_target_strict(
         db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name
     )
 
-    if not tag:
+    if not parent and not subcat and not tag:
         notify(
-            "Sin categorías/tags disponibles",
-            "No queda ninguna categoría/tag sin artículos publicados. No se publicará nada.",
+            "Sin destinos disponibles",
+            "Regla estricta activada: todas las opciones de tag/categoría/subcategoría tienen al menos un artículo en alguno de los niveles. No se publicará nada.",
             level="warning",
             always_email=True
         )
-        print("🟨 No quedan categorías/tags disponibles sin artículos publicados. Proceso detenido.")
+        print("🟨 Cobertura detectada en algún nivel (tag/subcat/categoría). Proceso detenido.")
         sys.exit(0)
 
-    notify("Selección realizada",
-           f"Parent: {parent.get('name') if parent else 'N/D'}; Subcat: {subcat.get('name') if subcat else 'N/D'}; Tag: {tag_name(tag)}",
-           level="info", always_email=True)
+    sel_msg = (
+        f"Parent: {parent.get('name') if parent else 'N/D'}; "
+        f"Subcat: {subcat.get('name') if subcat else 'N/D'}; "
+        f"{'Tag: ' + tag_name(tag) if tag else 'Sin tag (tema por categoría/subcategoría)'}"
+    )
+    notify("Selección realizada", sel_msg, level="info", always_email=True)
 
     # Publica exactamente 1 artículo (cumpliendo el límite semanal ya comprobado)
     created = False
     try:
         created = ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id)
     except Exception as e:
-        notify("Error generando/insertando artículo", f"Tag '{tag_name(tag)}' :: {e}", level="error", always_email=True)
+        notify("Error generando/insertando artículo", f"{('Tag ' + tag_name(tag)) if tag else 'Sin tag'} :: {e}", level="error", always_email=True)
 
     if created:
         notify("Proceso terminado", "Artículos creados: 1 (límite semanal alcanzado).", level="success", always_email=True)
@@ -633,5 +751,5 @@ def main():
         notify("Proceso terminado", "Artículos creados: 0 (posiblemente ya existía un título muy similar).", level="warning", always_email=True)
         print("\n🟩 Proceso terminado. Artículos creados: 0")
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     main()
