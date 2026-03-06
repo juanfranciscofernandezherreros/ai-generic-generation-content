@@ -1,13 +1,23 @@
 # -*- coding: utf-8 -*-
-import os, sys, json, random, re, unicodedata, difflib
+import os, sys, json, random, re, unicodedata, difflib, logging
 import smtplib
 from datetime import datetime, timezone, time, timedelta
+from typing import Any, Dict, List, Optional, Set, Tuple
 from zoneinfo import ZoneInfo
 from pymongo import MongoClient
+from pymongo.database import Database
 from bson import ObjectId
 from openai import OpenAI
 from dotenv import load_dotenv
 from email.message import EmailMessage
+
+# ============ LOGGING ============
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+)
+logger = logging.getLogger(__name__)
 
 # ============ CARGA .env ============
 # Busca el .env en la carpeta actual del script
@@ -38,8 +48,17 @@ LIMIT_PUBLICATION = (os.getenv("LIMIT_PUBLICATION", "true").lower() in ("1", "tr
 # Si es true, enviará por email el prompt de generación antes de llamar a OpenAI
 SEND_PROMPT_EMAIL = (os.getenv("SEND_PROMPT_EMAIL", "false").lower() in ("1", "true", "yes", "y"))
 
+# ============ CONSTANTS ============
+SIMILARITY_THRESHOLD_DEFAULT = 0.82   # umbral para is_too_similar genérico
+SIMILARITY_THRESHOLD_STRICT  = 0.86   # umbral usado al reintentar títulos
+MAX_TITLE_RETRIES            = 5      # intentos máx. para generar título único
+RECENT_TITLES_LIMIT          = 50     # cuántos títulos recientes cargar
+OPENAI_MAX_RETRIES           = 3      # reintentos para llamadas a OpenAI
+OPENAI_RETRY_BASE_DELAY      = 2      # seg. base para backoff exponencial
+MONGO_TIMEOUT_MS             = 5000   # serverSelectionTimeoutMS
+
 # ============ HELPERS ============
-def str_id(x):
+def str_id(x: Any) -> str:
     try:
         if isinstance(x, ObjectId):
             return str(x)
@@ -47,12 +66,12 @@ def str_id(x):
     except Exception:
         return str(x)
 
-def as_list(v):
+def as_list(v: Any) -> list:
     if v is None: return []
     if isinstance(v, (list, tuple, set)): return list(v)
     return [v]
 
-def tag_name(t):
+def tag_name(t: Dict[str, Any]) -> str:
     return str(t.get("name") or t.get("tag") or t.get("_id"))
 
 def slugify(text: str) -> str:
@@ -140,6 +159,40 @@ def notify(subject: str, message: str, level: str = "info", always_email: bool =
         html = f"<p><b>{subject}</b></p><p>{message}</p><p><small>{stamp} UTC</small></p>"
         send_notification_email(subject=f"[{level.upper()}] {subject}", html_body=html, text_body=f"{subject}\n\n{message}\n\n{stamp} UTC")
 
+# ========= Batch preload para evitar N+1 queries =========
+def preload_published_tag_ids(db: Database) -> Set[str]:
+    """Devuelve el conjunto de tag _id (como str) que ya tienen artículos publicados."""
+    pipeline = [
+        {"$match": {"status": "published", "tags": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags"}},
+    ]
+    return {str(doc["_id"]) for doc in db[ARTICLES_COLL].aggregate(pipeline)}
+
+def preload_published_category_ids(db: Database) -> Set[str]:
+    """Devuelve el conjunto de category _id (como str) que ya tienen artículos publicados."""
+    pipeline = [
+        {"$match": {"status": "published", "category": {"$exists": True, "$ne": None}}},
+        {"$group": {"_id": "$category"}},
+    ]
+    return {str(doc["_id"]) for doc in db[ARTICLES_COLL].aggregate(pipeline)}
+
+# ========= Retry con back-off exponencial =========
+def _retry_with_backoff(fn, max_retries: int = OPENAI_MAX_RETRIES, base_delay: float = OPENAI_RETRY_BASE_DELAY):
+    """Ejecuta *fn()* con reintentos y back-off exponencial. Reintenta solo errores transitorios."""
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return fn()
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            last_exc = exc
+            wait = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
+            logger.warning("Reintento %d/%d tras error transitorio: %s (espera %.1fs)", attempt, max_retries, exc, wait)
+            import time as _time; _time.sleep(wait)
+        except Exception:
+            raise
+    raise RuntimeError(f"Falló tras {max_retries} reintentos") from last_exc
+
 # ========= Dominio categorías/tags =========
 def index_tags(tags):
     """Índices útiles de tags por _id y por nombre/tag."""
@@ -196,7 +249,7 @@ def get_related_tags_for_category(cat_or_subcat, tags, tags_by_id, tags_by_name)
             uniq.append(t)
     return uniq
 
-def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None) -> str:
+def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
     avoid_titles = avoid_titles or []
     avoid_block = ""
     if avoid_titles:
@@ -206,27 +259,34 @@ def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, a
             + "; ".join(f'"{t}"' for t in avoid_list)
         )
     return f"""
-Eres redactor técnico experto en Spring Boot y Lombok. Genera un artículo **en español** con la siguiente estructura JSON estricta:
+Eres redactor técnico sénior especializado en desarrollo de software con Spring Boot y Lombok.
+Genera un artículo **en español** devolviendo **únicamente** un objeto JSON con esta estructura:
 {{
   "title": "...",
   "summary": "...",
   "body": "..."
 }}
 
-Reglas:
+Reglas de contenido:
 - El tema principal es "{tag_text}" dentro de la categoría "{parent_name}" y subcategoría "{subcat_name}".
-- "title": atractivo, claro y conciso (máx. 70 caracteres).
-- "summary": 2-3 frases que expliquen el valor del post.
-- "body": HTML bien formado que incluya:
-  - <h1> con el título (sin emojis en el h1).
-  - Introducción breve (<p>).
-  - 3-5 secciones <h2> con explicación técnica y buenas prácticas.
-  - Cuando proceda, ejemplos de código reales en <pre><code class=\\"language-...\\"> ... </code></pre>.
-  - Una sección "Preguntas frecuentes (FAQ)" con 3-5 <h3> preguntas y respuestas <p>.
-  - Una breve conclusión con llamada a la acción (CTA).
-- El contenido debe ser original, correcto y usable.
+- "title": atractivo, claro, conciso (máx. 70 caracteres), optimizado para SEO. Incluye la palabra clave principal.
+- "summary": 2-3 frases que expliquen el valor del artículo. Debe funcionar como meta-descripción SEO (máx. 160 caracteres).
+- "body": HTML semántico y bien formado que incluya:
+  · <h1> con el título (sin emojis en el h1).
+  · Introducción breve (<p>) que enganche al lector y presente el problema que resuelve el tema.
+  · 3-5 secciones <h2> con explicación técnica, buenas prácticas y casos de uso reales.
+  · Cuando proceda, ejemplos de código completos y funcionales en <pre><code class=\\"language-...\\"> ... </code></pre>.
+  · Los ejemplos deben seguir las convenciones del framework y ser copiables directamente.
+  · Una sección <h2> "Preguntas frecuentes (FAQ)" con 3-5 preguntas en <h3> y respuestas en <p>.
+  · Una breve conclusión <h2> con resumen de puntos clave y llamada a la acción (CTA).
+  · Usa listas (<ul>/<ol>) para enumerar ventajas, pasos o comparativas.
+
+Reglas de calidad:
+- Contenido 100 % original, técnicamente correcto y listo para publicar.
+- Tono profesional pero accesible; evita relleno o frases genéricas.
 - Si el tema encaja, incluye ejemplo práctico con Lombok y/o Spring Boot.
-- Escapa correctamente comillas para que sea JSON válido.{avoid_block}
+- Asegúrate de que el HTML no tenga etiquetas sin cerrar.
+- Escapa correctamente comillas dentro de los valores para que el JSON sea válido.{avoid_block}
 """
 
 def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
@@ -387,42 +447,59 @@ def find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name
 
     return subcats_with_tags
 
-# ======= Selector ESTRICTO =======
-def pick_fresh_target_strict(db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name):
+# ======= Selector ESTRICTO (optimizado con preload) =======
+def pick_fresh_target_strict(db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name,
+                             published_tag_ids: Optional[Set[str]] = None,
+                             published_cat_ids: Optional[Set[str]] = None):
     """
     Devuelve (parent, subcat, tag) cumpliendo:
       - tag SIN artículos publicados
       - subcategoría SIN artículos publicados
       - categoría padre (si existe) SIN artículos publicados
 
+    Usa conjuntos pre-cargados (published_tag_ids, published_cat_ids) para
+    evitar consultas individuales a MongoDB (N+1).
+
     Si no hay ningún candidato con tag que cumpla, intenta publicación SIN tag:
       - subcategoría SIN artículos y padre SIN artículos (o categoría raíz SIN artículos)
 
     Si no hay nada que cumpla → (None, None, None).
     """
+    # Pre-cargar si no se pasaron desde fuera
+    if published_tag_ids is None:
+        published_tag_ids = preload_published_tag_ids(db)
+    if published_cat_ids is None:
+        published_cat_ids = preload_published_category_ids(db)
+
+    def _tag_has_article(tag_doc) -> bool:
+        return str_id(tag_doc.get("_id")) in published_tag_ids
+
+    def _cat_has_article(cat_doc) -> bool:
+        return str_id(cat_doc.get("_id")) in published_cat_ids
+
     # 1) Con tags, cumpliendo regla estricta
     candidates = find_subcats_with_tags(categories, by_parent, tags, tags_by_id, tags_by_name)
     random.shuffle(candidates)
     for parent_id, subcat, rel_tags in candidates:
         parent = by_id.get(parent_id) if parent_id else None
-        if subcat and category_has_published_article(db, subcat): 
+        if subcat and _cat_has_article(subcat):
             continue
-        if parent and category_has_published_article(db, parent): 
+        if parent and _cat_has_article(parent):
             continue
-        available_tags = [t for t in rel_tags if not tag_has_published_article(db, t)]
+        available_tags = [t for t in rel_tags if not _tag_has_article(t)]
         if not available_tags:
             continue
         random.shuffle(available_tags)
         t = random.choice(available_tags)
         return parent, subcat, t
 
-    # 2) SIN tag
-    cats_wo_article = find_categories_without_article(db, categories)
+    # 2) SIN tag — categorías/subcategorías sin artículos
+    cats_wo_article = [c for c in categories if not _cat_has_article(c)]
     random.shuffle(cats_wo_article)
     for c in cats_wo_article:
         if c.get("parent"):
             parent = by_id.get(str_id(c.get("parent")))
-            if parent and category_has_published_article(db, parent):
+            if parent and _cat_has_article(parent):
                 continue
             return parent, c, None
         else:
@@ -441,19 +518,13 @@ def build_topic_text(parent, subcat, tag):
         return str(parent.get("name") or parent.get("title"))
     return "General"
 
-def get_recent_titles(db, limit=50):
-    cur = db[ARTICLES_COLL].find({}, {"title": 1}).sort("createdAt", -1).limit(limit)
-    titles = [d.get("title", "") for d in cur if d.get("title")]
-    if len(titles) < limit:
-        cur2 = db[ARTICLES_COLL].find({}, {"title": 1}).sort("_id", -1).limit(limit)
-        titles2 = [d.get("title", "") for d in cur2 if d.get("title")]
-        seen, final = set(), []
-        for t in titles + titles2:
-            if t not in seen:
-                seen.add(t)
-                final.append(t)
-        return final[:limit]
-    return titles
+def get_recent_titles(db: Database, limit: int = RECENT_TITLES_LIMIT) -> List[str]:
+    """Obtiene los títulos más recientes con una sola consulta, usando _id como fallback de orden."""
+    cur = db[ARTICLES_COLL].find(
+        {"title": {"$exists": True, "$ne": ""}},
+        {"title": 1, "createdAt": 1},
+    ).sort([("createdAt", -1), ("_id", -1)]).limit(limit)
+    return [d["title"] for d in cur]
 
 # ====== Utilidades de parseo/IA ======
 def _extract_json_block(text: str) -> str:
@@ -475,30 +546,37 @@ def _safe_json_loads(s: str) -> dict:
         s2 = s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2019", "'")
         return json.loads(s2)
 
-def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
+def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> Tuple[str, str, str]:
     """
     Llama a OpenAI para generar el artículo. Devuelve (title, summary, body).
     Soporta SDK nuevo (responses.create) y el anterior (chat.completions.create).
+    Incluye reintentos con back-off exponencial para errores transitorios.
     """
     prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
 
     raw_text = None
-    # 1) Intento con API moderna
-    try:
+
+    # 1) Intento con API moderna (Responses) — con reintentos
+    def _call_responses():
         resp = client_ai.responses.create(model=OPENAI_MODEL, input=prompt)
-        raw_text = getattr(resp, "output_text", None)
-        if not raw_text and hasattr(resp, "content") and resp.content:
+        text = getattr(resp, "output_text", None)
+        if not text and hasattr(resp, "content") and resp.content:
             for c in resp.content:
                 if getattr(c, "type", None) in (None, "output_text"):
-                    raw_text = getattr(c, "text", None)
-                    if raw_text:
+                    text = getattr(c, "text", None)
+                    if text:
                         break
+        return text
+
+    try:
+        raw_text = _retry_with_backoff(_call_responses)
     except Exception:
+        logger.info("API Responses no disponible; usando Chat Completions como fallback.")
         raw_text = None
 
-    # 2) Fallback: Chat Completions
+    # 2) Fallback: Chat Completions — con reintentos
     if not raw_text:
-        try:
+        def _call_chat():
             chat = client_ai.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
@@ -507,7 +585,10 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
                 ],
                 temperature=0.7,
             )
-            raw_text = chat.choices[0].message.content
+            return chat.choices[0].message.content
+
+        try:
+            raw_text = _retry_with_backoff(_call_chat)
         except Exception as e:
             raise RuntimeError(f"Fallo llamando a OpenAI: {e}")
 
@@ -560,15 +641,15 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
         except Exception as e:
             notify("Error enviando prompt por email", str(e), level="warning", always_email=True)
 
-    max_attempts = 5
+    max_attempts = MAX_TITLE_RETRIES
     attempt = 0
     title = summary = body = None
 
     while attempt < max_attempts:
         attempt += 1
         t, s, b = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
-        if is_too_similar(t, recent_titles[:20], threshold=0.86) or is_too_similar(t, existing_titles_for_tag, threshold=0.86):
-            notify("Título similar detectado", f"Intento {attempt}: '{t}'. Reintentando...", level="warning", always_email=True)
+        if is_too_similar(t, recent_titles[:20], threshold=SIMILARITY_THRESHOLD_STRICT) or is_too_similar(t, existing_titles_for_tag, threshold=SIMILARITY_THRESHOLD_STRICT):
+            notify("Título similar detectado", f"Intento {attempt}/{max_attempts}: '{t}'. Reintentando...", level="warning", always_email=True)
             avoid_titles.append(t)
             continue
         title, summary, body = t, s, b
@@ -636,7 +717,7 @@ def main():
 
     # Conexión a Mongo
     try:
-        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=MONGO_TIMEOUT_MS)
         db = client[DB_NAME]
         notify("Conexión a MongoDB", f"Base de datos '{DB_NAME}' conectada correctamente.", level="success", always_email=True)
     except Exception as e:
@@ -703,8 +784,14 @@ def main():
     tags_by_id, tags_by_name = index_tags(tags)
 
     # Títulos recientes para control de parecido
-    recent_titles = get_recent_titles(db, limit=50)
+    recent_titles = get_recent_titles(db, limit=RECENT_TITLES_LIMIT)
     notify("Control de similitud", f"Títulos recientes cargados: {len(recent_titles)}", level="info", always_email=True)
+
+    # Pre-cargar conjuntos de cobertura (evita consultas N+1)
+    published_tag_ids = preload_published_tag_ids(db)
+    published_cat_ids = preload_published_category_ids(db)
+    logger.info("Cobertura pre-cargada — tags con artículo: %d, categorías con artículo: %d",
+                len(published_tag_ids), len(published_cat_ids))
 
     # Cliente OpenAI
     try:
@@ -714,9 +801,11 @@ def main():
         notify("Error inicializando OpenAI", str(e), level="error", always_email=True)
         sys.exit(1)
 
-    # ===== Selección ESTRICTA =====
+    # ===== Selección ESTRICTA (usa conjuntos pre-cargados) =====
     parent, subcat, tag = pick_fresh_target_strict(
-        db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name
+        db, categories, by_id, by_parent, tags, tags_by_id, tags_by_name,
+        published_tag_ids=published_tag_ids,
+        published_cat_ids=published_cat_ids,
     )
 
     if not parent and not subcat and not tag:

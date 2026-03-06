@@ -1,0 +1,197 @@
+# -*- coding: utf-8 -*-
+"""Tests for pure helper functions in generateArticle.py."""
+
+import json
+import pytest
+
+from generateArticle import (
+    as_list,
+    build_generation_prompt,
+    html_escape,
+    is_too_similar,
+    normalize_for_similarity,
+    similar_ratio,
+    slugify,
+    str_id,
+    tag_name,
+    _extract_json_block,
+    _safe_json_loads,
+    SIMILARITY_THRESHOLD_DEFAULT,
+    SIMILARITY_THRESHOLD_STRICT,
+    MAX_TITLE_RETRIES,
+    RECENT_TITLES_LIMIT,
+)
+
+
+# ---- str_id ----
+class TestStrId:
+    def test_string_passthrough(self):
+        assert str_id("hello") == "hello"
+
+    def test_none(self):
+        assert str_id(None) == "None"
+
+    def test_valid_objectid_string(self):
+        oid = "507f1f77bcf86cd799439011"
+        result = str_id(oid)
+        assert result == oid
+
+    def test_integer(self):
+        assert str_id(42) == "42"
+
+
+# ---- as_list ----
+class TestAsList:
+    def test_none(self):
+        assert as_list(None) == []
+
+    def test_list(self):
+        assert as_list([1, 2]) == [1, 2]
+
+    def test_tuple(self):
+        assert as_list((1, 2)) == [1, 2]
+
+    def test_set(self):
+        result = as_list({1})
+        assert result == [1]
+
+    def test_scalar(self):
+        assert as_list("a") == ["a"]
+        assert as_list(5) == [5]
+
+
+# ---- tag_name ----
+class TestTagName:
+    def test_name_field(self):
+        assert tag_name({"name": "Lombok", "tag": "lmb"}) == "Lombok"
+
+    def test_tag_field(self):
+        assert tag_name({"tag": "@Data"}) == "@Data"
+
+    def test_id_fallback(self):
+        assert tag_name({"_id": "abc"}) == "abc"
+
+
+# ---- slugify ----
+class TestSlugify:
+    def test_basic(self):
+        assert slugify("Hello World") == "hello-world"
+
+    def test_accents(self):
+        assert slugify("Cómo usar @Builder") == "como-usar-builder"
+
+    def test_special_chars(self):
+        assert slugify("  --test!!  ") == "test"
+
+    def test_empty(self):
+        assert slugify("") == ""
+
+
+# ---- normalize_for_similarity / similar_ratio / is_too_similar ----
+class TestSimilarity:
+    def test_normalize_removes_accents(self):
+        assert normalize_for_similarity("café") == "cafe"
+
+    def test_normalize_lowercases(self):
+        assert normalize_for_similarity("HELLO") == "hello"
+
+    def test_normalize_strips_punctuation(self):
+        assert normalize_for_similarity("hello-world!") == "hello world"
+
+    def test_similar_ratio_identical(self):
+        assert similar_ratio("hello", "hello") == 1.0
+
+    def test_similar_ratio_different(self):
+        assert similar_ratio("abc", "xyz") < 0.5
+
+    def test_similar_ratio_empty(self):
+        assert similar_ratio("", "hello") == 0.0
+
+    def test_is_too_similar_true(self):
+        assert is_too_similar("Cómo usar Lombok", ["Como usar Lombok en Java"], threshold=0.7)
+
+    def test_is_too_similar_false(self):
+        assert not is_too_similar("Spring Security avanzado", ["Lombok básico"], threshold=0.8)
+
+    def test_is_too_similar_empty_candidates(self):
+        assert not is_too_similar("Cualquier título", [])
+
+
+# ---- html_escape ----
+class TestHtmlEscape:
+    def test_ampersand(self):
+        assert html_escape("a & b") == "a &amp; b"
+
+    def test_lt_gt(self):
+        assert html_escape("<div>") == "&lt;div&gt;"
+
+    def test_no_change(self):
+        assert html_escape("hello") == "hello"
+
+
+# ---- _extract_json_block ----
+class TestExtractJsonBlock:
+    def test_fenced(self):
+        text = 'Some text\n```json\n{"title":"A"}\n```\nMore text'
+        assert _extract_json_block(text) == '{"title":"A"}'
+
+    def test_bare_json(self):
+        text = 'Here is the result: {"title":"B","body":"<p>hi</p>"} done.'
+        result = _extract_json_block(text)
+        parsed = json.loads(result)
+        assert parsed["title"] == "B"
+
+    def test_empty(self):
+        assert _extract_json_block("") == ""
+
+    def test_no_json(self):
+        assert _extract_json_block("just text") == "just text"
+
+
+# ---- _safe_json_loads ----
+class TestSafeJsonLoads:
+    def test_normal_json(self):
+        assert _safe_json_loads('{"a": 1}') == {"a": 1}
+
+    def test_smart_quotes(self):
+        result = _safe_json_loads('{\u201ctitle\u201d: \u201cHello\u201d}')
+        assert result["title"] == "Hello"
+
+
+# ---- build_generation_prompt ----
+class TestBuildGenerationPrompt:
+    def test_contains_tag(self):
+        prompt = build_generation_prompt("Spring Boot", "Lombok", "@Data")
+        assert "@Data" in prompt
+        assert "Spring Boot" in prompt
+        assert "Lombok" in prompt
+
+    def test_avoid_titles_included(self):
+        prompt = build_generation_prompt("Cat", "Sub", "Tag", avoid_titles=["Título A"])
+        assert "Título A" in prompt
+
+    def test_seo_instructions_present(self):
+        """The optimized prompt should include SEO guidance."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert "SEO" in prompt
+
+    def test_returns_string(self):
+        result = build_generation_prompt("A", "B", "C")
+        assert isinstance(result, str)
+        assert len(result) > 100
+
+
+# ---- Constants ----
+class TestConstants:
+    def test_thresholds_are_float(self):
+        assert isinstance(SIMILARITY_THRESHOLD_DEFAULT, float)
+        assert isinstance(SIMILARITY_THRESHOLD_STRICT, float)
+
+    def test_threshold_ordering(self):
+        assert SIMILARITY_THRESHOLD_STRICT > SIMILARITY_THRESHOLD_DEFAULT
+
+    def test_max_retries_positive(self):
+        assert MAX_TITLE_RETRIES > 0
+
+    def test_recent_limit_positive(self):
+        assert RECENT_TITLES_LIMIT > 0
