@@ -1,3 +1,7 @@
 # Ignorar archivo de variables de entorno
 .env
 .env.*
+
+# Cache
+__pycache__/
+.pytest_cache/

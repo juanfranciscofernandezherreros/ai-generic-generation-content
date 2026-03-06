@@ -196,14 +196,22 @@ def get_related_tags_for_category(cat_or_subcat, tags, tags_by_id, tags_by_name)
             uniq.append(t)
     return uniq
 
-def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None) -> str:
+def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None, related_tags=None) -> str:
     avoid_titles = avoid_titles or []
+    related_tags = related_tags or []
     avoid_block = ""
     if avoid_titles:
         avoid_list = [t.replace('"', '\"') for t in avoid_titles[:5]]
         avoid_block = (
             "\n- Evita usar títulos iguales o muy similares a cualquiera de estos: "
             + "; ".join(f'"{t}"' for t in avoid_list)
+        )
+    related_block = ""
+    if related_tags:
+        tags_list = ", ".join(f'"{t}"' for t in related_tags[:10])
+        related_block = (
+            f"\n- Otros tags relacionados en la misma categoría: {tags_list}. "
+            "Puedes mencionarlos brevemente cuando sea relevante, pero el foco principal debe ser el tema indicado."
         )
     return f"""
 Eres redactor técnico experto en Spring Boot y Lombok. Genera un artículo **en español** con la siguiente estructura JSON estricta:
@@ -226,16 +234,16 @@ Reglas:
   - Una breve conclusión con llamada a la acción (CTA).
 - El contenido debe ser original, correcto y usable.
 - Si el tema encaja, incluye ejemplo práctico con Lombok y/o Spring Boot.
-- Escapa correctamente comillas para que sea JSON válido.{avoid_block}
+- Escapa correctamente comillas para que sea JSON válido.{avoid_block}{related_block}
 """
 
-def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
+def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None, related_tags=None):
     """
     Construye el prompt y lo envía por email usando SMTP ya configurado.
     NO intenta parsear ninguna respuesta de OpenAI (solo notifica).
     Devuelve el prompt por si quieres loguearlo.
     """
-    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, related_tags=related_tags)
     html = f"<h3>Prompt de generación</h3><p>Se envía el prompt que se usará con OpenAI:</p><pre style=\"white-space:pre-wrap; word-break:break-word;\">{html_escape(prompt)}</pre>"
     send_notification_email(subject="Prompt de generación", html_body=html, text_body=prompt)
     return prompt
@@ -475,12 +483,12 @@ def _safe_json_loads(s: str) -> dict:
         s2 = s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2019", "'")
         return json.loads(s2)
 
-def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
+def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None, related_tags=None):
     """
     Llama a OpenAI para generar el artículo. Devuelve (title, summary, body).
     Soporta SDK nuevo (responses.create) y el anterior (chat.completions.create).
     """
-    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, related_tags=related_tags)
 
     raw_text = None
     # 1) Intento con API moderna
@@ -531,10 +539,11 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
 
     return title, summary, body
 
-def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id):
+def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id, related_tags=None):
     """Genera e inserta un artículo. Se asume que parent/subcat/tag ya cumplen la regla estricta."""
     tag_id = None
     existing_titles_for_tag = []
+    related_tags = related_tags or []
 
     if tag:
         try:
@@ -555,7 +564,7 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
     # Opcional: enviar el prompt por email antes de generar con OpenAI
     if SEND_PROMPT_EMAIL:
         try:
-            email_generation_prompt(parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
+            email_generation_prompt(parent_name, subcat_name, topic_text, avoid_titles=avoid_titles, related_tags=related_tags)
             notify("Prompt enviado por email", "Se envió el prompt de generación a la dirección configurada.", level="info", always_email=False)
         except Exception as e:
             notify("Error enviando prompt por email", str(e), level="warning", always_email=True)
@@ -566,7 +575,7 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
 
     while attempt < max_attempts:
         attempt += 1
-        t, s, b = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
+        t, s, b = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles, related_tags=related_tags)
         if is_too_similar(t, recent_titles[:20], threshold=0.86) or is_too_similar(t, existing_titles_for_tag, threshold=0.86):
             notify("Título similar detectado", f"Intento {attempt}: '{t}'. Reintentando...", level="warning", always_email=True)
             avoid_titles.append(t)
@@ -736,10 +745,21 @@ def main():
     )
     notify("Selección realizada", sel_msg, level="info", always_email=True)
 
+    # Obtener tags relacionados (hermanos en la misma categoría/subcategoría)
+    related_tags = []
+    target_cat = subcat or parent
+    if target_cat:
+        sibling_tags = get_related_tags_for_category(target_cat, tags, tags_by_id, tags_by_name)
+        current_tag_id = str_id(tag.get("_id")) if tag else None
+        related_tags = [
+            tag_name(t) for t in sibling_tags
+            if str_id(t.get("_id")) != current_tag_id
+        ]
+
     # Publica exactamente 1 artículo (cumpliendo el límite semanal ya comprobado)
     created = False
     try:
-        created = ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id)
+        created = ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id, related_tags=related_tags)
     except Exception as e:
         notify("Error generando/insertando artículo", f"{('Tag ' + tag_name(tag)) if tag else 'Sin tag'} :: {e}", level="error", always_email=True)
 
