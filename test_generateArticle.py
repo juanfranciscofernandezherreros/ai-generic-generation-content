@@ -7,6 +7,9 @@ import pytest
 from generateArticle import (
     as_list,
     build_generation_prompt,
+    count_words,
+    estimate_reading_time,
+    extract_plain_text,
     html_escape,
     is_too_similar,
     normalize_for_similarity,
@@ -129,6 +132,58 @@ class TestHtmlEscape:
         assert html_escape("hello") == "hello"
 
 
+# ---- extract_plain_text ----
+class TestExtractPlainText:
+    def test_strips_tags(self):
+        assert "hello" in extract_plain_text("<p>hello</p>")
+
+    def test_empty(self):
+        assert extract_plain_text("") == ""
+
+    def test_no_tags(self):
+        assert extract_plain_text("plain text") == "plain text"
+
+    def test_nested_tags(self):
+        result = extract_plain_text("<h1>Title</h1><p>Body <strong>text</strong>.</p>")
+        assert "Title" in result
+        assert "Body" in result
+        assert "<" not in result
+
+
+# ---- count_words ----
+class TestCountWords:
+    def test_simple_html(self):
+        assert count_words("<p>one two three</p>") == 3
+
+    def test_empty(self):
+        assert count_words("") == 0
+
+    def test_plain_text(self):
+        assert count_words("hello world") == 2
+
+    def test_multiple_tags(self):
+        html = "<h1>Spring Boot</h1><p>Guía completa para empezar.</p>"
+        assert count_words(html) >= 5
+
+
+# ---- estimate_reading_time ----
+class TestEstimateReadingTime:
+    def test_minimum_one_minute(self):
+        assert estimate_reading_time("<p>hola</p>") == 1
+
+    def test_empty_body(self):
+        assert estimate_reading_time("") == 1
+
+    def test_long_body(self):
+        # 460 words → ceil(460/230) = 2 minutes
+        words = " ".join(["palabra"] * 460)
+        assert estimate_reading_time(f"<p>{words}</p>") == 2
+
+    def test_custom_wpm(self):
+        words = " ".join(["word"] * 100)
+        assert estimate_reading_time(f"<p>{words}</p>", wpm=100) == 1
+
+
 # ---- _extract_json_block ----
 class TestExtractJsonBlock:
     def test_fenced(self):
@@ -174,6 +229,16 @@ class TestBuildGenerationPrompt:
         """The optimized prompt should include SEO guidance."""
         prompt = build_generation_prompt("Cat", "Sub", "Tag")
         assert "SEO" in prompt
+
+    def test_keywords_field_in_schema(self):
+        """The prompt must ask OpenAI to return a 'keywords' field."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert "keywords" in prompt
+
+    def test_title_max_chars_is_60(self):
+        """Title limit should be 60 characters for SEO compliance."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert "máx. 60 caracteres" in prompt
 
     def test_returns_string(self):
         result = build_generation_prompt("A", "B", "C")

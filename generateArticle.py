@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import math
 import os, sys, json, random, re, unicodedata, difflib, logging
 import smtplib
 import time as _time
@@ -57,6 +58,8 @@ RECENT_TITLES_LIMIT          = 50     # cuántos títulos recientes cargar
 OPENAI_MAX_RETRIES           = 3      # reintentos para llamadas a OpenAI
 OPENAI_RETRY_BASE_DELAY      = 2      # seg. base para backoff exponencial
 MONGO_TIMEOUT_MS             = 5000   # serverSelectionTimeoutMS
+META_TITLE_MAX_LENGTH        = 60     # máx. caracteres para metaTitle SEO
+META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SEO
 
 # ============ HELPERS ============
 def str_id(x: Any) -> str:
@@ -121,6 +124,23 @@ def html_escape(s: str) -> str:
          .replace("<", "&lt;")
          .replace(">", "&gt;")
     )
+
+def extract_plain_text(html: str) -> str:
+    """Elimina todas las etiquetas HTML y devuelve el texto plano sin espacios múltiples."""
+    if not html:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", text).strip()
+
+def count_words(html: str) -> int:
+    """Cuenta las palabras de un cuerpo HTML."""
+    text = extract_plain_text(html)
+    return len(text.split()) if text else 0
+
+def estimate_reading_time(body_html: str, wpm: int = 230) -> int:
+    """Devuelve el tiempo de lectura estimado en minutos (mínimo 1, redondeando hacia arriba)."""
+    words = count_words(body_html)
+    return max(1, math.ceil(words / wpm))
 
 # ========= Notificaciones / logging =========
 def send_notification_email(subject: str, html_body: str, text_body: str = None):
@@ -265,13 +285,15 @@ Genera un artículo **en español** devolviendo **únicamente** un objeto JSON c
 {{
   "title": "...",
   "summary": "...",
-  "body": "..."
+  "body": "...",
+  "keywords": ["keyword1", "keyword2", "keyword3"]
 }}
 
 Reglas de contenido:
 - El tema principal es "{tag_text}" dentro de la categoría "{parent_name}" y subcategoría "{subcat_name}".
-- "title": atractivo, claro, conciso (máx. 70 caracteres), optimizado para SEO. Incluye la palabra clave principal.
+- "title": atractivo, claro, conciso (máx. 60 caracteres), optimizado para SEO. Incluye la palabra clave principal.
 - "summary": 2-3 frases que expliquen el valor del artículo. Debe funcionar como meta-descripción SEO (máx. 160 caracteres).
+- "keywords": lista de 3-7 palabras clave SEO relevantes para el artículo (en minúsculas, sin repetir el título exacto).
 - "body": HTML semántico y bien formado que incluya:
   · <h1> con el título (sin emojis en el h1).
   · Introducción breve (<p>) que enganche al lector y presente el problema que resuelve el tema.
@@ -547,9 +569,9 @@ def _safe_json_loads(s: str) -> dict:
         s2 = s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2019", "'")
         return json.loads(s2)
 
-def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> Tuple[str, str, str]:
+def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> Tuple[str, str, str, List[str]]:
     """
-    Llama a OpenAI para generar el artículo. Devuelve (title, summary, body).
+    Llama a OpenAI para generar el artículo. Devuelve (title, summary, body, keywords).
     Soporta SDK nuevo (responses.create) y el anterior (chat.completions.create).
     Incluye reintentos con back-off exponencial para errores transitorios.
     """
@@ -611,7 +633,13 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
         safe_title = html_escape(title)
         body = f'<h1>{safe_title}</h1>\n' + body
 
-    return title, summary, body
+    raw_keywords = data.get("keywords", [])
+    keywords: List[str] = (
+        [str(k).strip() for k in raw_keywords if str(k).strip()]
+        if isinstance(raw_keywords, list) else []
+    )
+
+    return title, summary, body, keywords
 
 def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id):
     """Genera e inserta un artículo. Se asume que parent/subcat/tag ya cumplen la regla estricta."""
@@ -645,15 +673,16 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
     max_attempts = MAX_TITLE_RETRIES
     attempt = 0
     title = summary = body = None
+    keywords: List[str] = []
 
     while attempt < max_attempts:
         attempt += 1
-        t, s, b = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
+        t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
         if is_too_similar(t, recent_titles[:20], threshold=SIMILARITY_THRESHOLD_STRICT) or is_too_similar(t, existing_titles_for_tag, threshold=SIMILARITY_THRESHOLD_STRICT):
             notify("Título similar detectado", f"Intento {attempt}/{max_attempts}: '{t}'. Reintentando...", level="warning", always_email=True)
             avoid_titles.append(t)
             continue
-        title, summary, body = t, s, b
+        title, summary, body, keywords = t, s, b, kw
         break
 
     if not title or not body:
@@ -663,6 +692,11 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
     base_slug = slugify(title)
     slug = next_available_slug(db, base_slug)
     now = now_utc()
+
+    word_count = count_words(body)
+    reading_time = estimate_reading_time(body)
+    meta_title = title[:META_TITLE_MAX_LENGTH].rstrip() if len(title) > META_TITLE_MAX_LENGTH else title
+    meta_description = summary[:META_DESCRIPTION_MAX_LENGTH].rstrip() if len(summary) > META_DESCRIPTION_MAX_LENGTH else summary
 
     doc = {
         "title": title,
@@ -684,6 +718,11 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
         "createdAt": now,
         "updatedAt": now,
         "images": None,
+        "wordCount": word_count,
+        "readingTime": reading_time,
+        "keywords": keywords,
+        "metaTitle": meta_title,
+        "metaDescription": meta_description,
     }
 
     db[ARTICLES_COLL].insert_one(doc)
