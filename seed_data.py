@@ -1,0 +1,433 @@
+# -*- coding: utf-8 -*-
+"""
+seed_data.py
+------------
+Siembra MongoDB con categorías, subcategorías y tags predefinidos
+sobre Spring Boot, Data & Persistencia e Inteligencia Artificial.
+
+Uso:
+    python seed_data.py
+
+Las operaciones son idempotentes: usar upsert por nombre evita
+duplicados si se ejecuta varias veces.
+
+Variables de entorno (leídas del .env o del sistema):
+    MONGODB_URI, DB_NAME, CATEGORY_COLL, TAGS_COLL, USERS_COLL,
+    AUTHOR_USERNAME
+"""
+
+import os
+import sys
+from datetime import datetime, timezone
+
+from bson import ObjectId
+from dotenv import load_dotenv
+from pymongo import MongoClient
+
+# ─── configuración ────────────────────────────────────────────────────────────
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
+MONGODB_URI     = os.getenv("MONGODB_URI", "mongodb://admin:admin1234@localhost:27017/blogdb?authSource=admin")
+DB_NAME         = os.getenv("DB_NAME", "blogdb")
+CATEGORY_COLL   = os.getenv("CATEGORY_COLL", "categories")
+TAGS_COLL       = os.getenv("TAGS_COLL", "tags")
+USERS_COLL      = os.getenv("USERS_COLL", "users")
+AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME", "adminUser")
+MONGO_TIMEOUT_MS = 5000
+
+NOW = datetime.now(tz=timezone.utc)
+
+# ─── taxonomía de temas ───────────────────────────────────────────────────────
+# Estructura:  { "name": str, "description": str, "subcategories": [ { "name", "description", "tags": [str, ...] } ] }
+
+TAXONOMY = [
+    {
+        "name": "Spring Boot",
+        "description": "Desarrollo de aplicaciones Java con el framework Spring Boot.",
+        "subcategories": [
+            {
+                "name": "Spring Boot Core",
+                "description": "Fundamentos y configuración automática de Spring Boot.",
+                "tags": [
+                    "@SpringBootApplication",
+                    "Auto-configuration",
+                    "Spring Profiles",
+                    "application.yml",
+                    "application.properties",
+                    "CommandLineRunner",
+                    "@ConditionalOnProperty",
+                    "Embedded Tomcat",
+                    "Spring Boot Actuator",
+                    "Spring Boot DevTools",
+                ],
+            },
+            {
+                "name": "Spring Security",
+                "description": "Autenticación y autorización con Spring Security.",
+                "tags": [
+                    "JWT Authentication",
+                    "OAuth2 y OpenID Connect",
+                    "Spring Security Filter Chain",
+                    "@PreAuthorize",
+                    "@Secured",
+                    "CORS Configuration",
+                    "CSRF Protection",
+                    "UserDetailsService",
+                    "BCryptPasswordEncoder",
+                    "Method Security",
+                ],
+            },
+            {
+                "name": "Spring Data JPA",
+                "description": "Persistencia de datos con Spring Data JPA e Hibernate.",
+                "tags": [
+                    "@Entity y @Table",
+                    "JpaRepository",
+                    "@Query personalizada",
+                    "@Transactional",
+                    "@OneToMany y @ManyToOne",
+                    "Paginación con Pageable",
+                    "Criteria API",
+                    "Projections y DTOs",
+                    "@ManyToMany",
+                    "Spring Data Specifications",
+                ],
+            },
+            {
+                "name": "Spring MVC REST",
+                "description": "Creación de APIs REST con Spring MVC.",
+                "tags": [
+                    "@RestController",
+                    "@GetMapping y @PostMapping",
+                    "@RequestBody y @ResponseBody",
+                    "@PathVariable y @RequestParam",
+                    "ResponseEntity",
+                    "@ControllerAdvice",
+                    "@Valid y Bean Validation",
+                    "HATEOAS",
+                    "OpenAPI y Swagger",
+                    "Content Negotiation",
+                ],
+            },
+            {
+                "name": "Spring Boot Testing",
+                "description": "Pruebas de integración y unitarias en Spring Boot.",
+                "tags": [
+                    "@SpringBootTest",
+                    "@WebMvcTest",
+                    "@DataJpaTest",
+                    "@MockBean y Mockito",
+                    "Testcontainers",
+                    "@ParameterizedTest",
+                    "MockMvc",
+                    "WireMock",
+                    "@TestConfiguration",
+                    "JUnit 5 con Spring",
+                ],
+            },
+            {
+                "name": "Lombok",
+                "description": "Reducción de código boilerplate Java con Lombok.",
+                "tags": [
+                    "@Data",
+                    "@Builder",
+                    "@NoArgsConstructor y @AllArgsConstructor",
+                    "@Getter y @Setter",
+                    "@Slf4j",
+                    "@Value",
+                    "@RequiredArgsConstructor",
+                    "@EqualsAndHashCode",
+                    "@ToString",
+                    "@SuperBuilder",
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Data & Persistencia",
+        "description": "Gestión y persistencia de datos en aplicaciones Java.",
+        "subcategories": [
+            {
+                "name": "JPA e Hibernate",
+                "description": "Mapeo objeto-relacional con JPA e Hibernate.",
+                "tags": [
+                    "Hibernate Caching L1 y L2",
+                    "Problema N+1 y soluciones",
+                    "FetchType LAZY vs EAGER",
+                    "Inheritance Strategies",
+                    "Native Queries",
+                    "HQL (Hibernate Query Language)",
+                    "@Embeddable y @Embedded",
+                    "@MappedSuperclass",
+                    "Hibernate Envers (auditoría)",
+                    "Connection Pooling HikariCP",
+                ],
+            },
+            {
+                "name": "Bases de Datos SQL",
+                "description": "Integración de Spring Boot con bases de datos relacionales.",
+                "tags": [
+                    "PostgreSQL con Spring Boot",
+                    "MySQL con Spring Boot",
+                    "H2 Database (testing)",
+                    "Índices y optimización SQL",
+                    "Stored Procedures con JPA",
+                    "Spring JDBC Template",
+                    "Transacciones distribuidas",
+                    "Multi-datasource en Spring Boot",
+                    "QueryDSL",
+                    "jOOQ con Spring Boot",
+                ],
+            },
+            {
+                "name": "NoSQL y MongoDB",
+                "description": "Bases de datos NoSQL con Spring Boot.",
+                "tags": [
+                    "Spring Data MongoDB",
+                    "@Document y @Field",
+                    "MongoRepository",
+                    "Aggregation Pipeline con Spring",
+                    "Spring Data Redis",
+                    "Caché con Redis y Spring",
+                    "Spring Data Elasticsearch",
+                    "Cassandra con Spring Boot",
+                    "@DBRef en MongoDB",
+                    "GridFS con Spring",
+                ],
+            },
+            {
+                "name": "Migraciones de Esquema",
+                "description": "Versionado y migración de esquemas de base de datos.",
+                "tags": [
+                    "Flyway con Spring Boot",
+                    "Liquibase con Spring Boot",
+                    "Versionado de migraciones SQL",
+                    "Rollback con Flyway",
+                    "Baseline en Flyway",
+                    "Checksum en Liquibase",
+                    "Migraciones en entornos CI/CD",
+                    "Flyway Callbacks",
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Inteligencia Artificial",
+        "description": "Integración de IA y Machine Learning con Java y Spring.",
+        "subcategories": [
+            {
+                "name": "Spring AI",
+                "description": "Integración nativa de modelos de IA con Spring AI.",
+                "tags": [
+                    "Spring AI Overview",
+                    "ChatClient con Spring AI",
+                    "Prompt Templates en Spring AI",
+                    "Function Calling con Spring AI",
+                    "Spring AI y Ollama",
+                    "Spring AI Advisors",
+                    "Spring AI con OpenAI",
+                    "Spring AI con Azure OpenAI",
+                    "Spring AI con Mistral",
+                    "Multimodalidad en Spring AI",
+                ],
+            },
+            {
+                "name": "LLMs y Modelos de Lenguaje",
+                "description": "Uso de grandes modelos de lenguaje (LLMs) en aplicaciones Java.",
+                "tags": [
+                    "OpenAI API con Java",
+                    "GPT-4 y modelos avanzados",
+                    "Tokens y Context Window",
+                    "Streaming de respuestas LLM",
+                    "Fine-tuning de modelos",
+                    "Prompt Engineering avanzado",
+                    "Chain of Thought (CoT)",
+                    "Few-shot Learning",
+                    "LangChain4j",
+                    "Integración con Hugging Face",
+                ],
+            },
+            {
+                "name": "Machine Learning con Java",
+                "description": "Algoritmos y frameworks de ML para aplicaciones Java.",
+                "tags": [
+                    "Deeplearning4j",
+                    "Weka con Java",
+                    "ONNX Runtime en Java",
+                    "TensorFlow Java",
+                    "Tribuo (Oracle ML)",
+                    "Clasificación con Smile",
+                    "Regresión lineal en Java",
+                    "Árboles de decisión en Java",
+                    "Cross-validation en Java",
+                    "Pipeline de datos ML en Java",
+                ],
+            },
+            {
+                "name": "Vector Databases y RAG",
+                "description": "Búsqueda semántica, embeddings y generación aumentada por recuperación (RAG).",
+                "tags": [
+                    "Embeddings con Spring AI",
+                    "Pinecone con Java",
+                    "Qdrant con Spring AI",
+                    "RAG (Retrieval Augmented Generation)",
+                    "Chroma DB con Spring",
+                    "Búsqueda semántica",
+                    "VectorStore en Spring AI",
+                    "pgvector con Spring Boot",
+                    "Weaviate con Spring",
+                    "Milvus con Java",
+                ],
+            },
+        ],
+    },
+]
+
+
+# ─── helpers ──────────────────────────────────────────────────────────────────
+
+def upsert_category(coll, doc: dict) -> ObjectId:
+    """Inserta o actualiza una categoría por nombre. Devuelve su ObjectId."""
+    result = coll.find_one_and_update(
+        {"name": doc["name"]},
+        {"$setOnInsert": {"_id": ObjectId()}, "$set": doc},
+        upsert=True,
+        return_document=True,
+    )
+    return result["_id"]
+
+
+def upsert_tag(coll, doc: dict) -> ObjectId:
+    """Inserta o actualiza un tag por nombre. Devuelve su ObjectId."""
+    result = coll.find_one_and_update(
+        {"name": doc["name"]},
+        {"$setOnInsert": {"_id": ObjectId()}, "$set": doc},
+        upsert=True,
+        return_document=True,
+    )
+    return result["_id"]
+
+
+def upsert_admin_user(coll):
+    """Crea el usuario administrador predeterminado si no existe."""
+    coll.update_one(
+        {"username": AUTHOR_USERNAME},
+        {
+            "$setOnInsert": {
+                "_id": ObjectId(),
+                "username": AUTHOR_USERNAME,
+                "email": f"{AUTHOR_USERNAME}@example.com",
+                "role": "admin",
+                "createdAt": NOW,
+                "updatedAt": NOW,
+            }
+        },
+        upsert=True,
+    )
+
+
+# ─── seeding ──────────────────────────────────────────────────────────────────
+
+def seed(db):
+    cat_coll  = db[CATEGORY_COLL]
+    tags_coll = db[TAGS_COLL]
+
+    total_cats = 0
+    total_tags = 0
+
+    for parent_def in TAXONOMY:
+        # 1) Insertar/actualizar categoría padre
+        parent_doc = {
+            "name": parent_def["name"],
+            "description": parent_def.get("description", ""),
+            "parent": None,
+            "createdAt": NOW,
+            "updatedAt": NOW,
+        }
+        parent_id = upsert_category(cat_coll, parent_doc)
+        total_cats += 1
+        print(f"  [parent] {parent_def['name']} → {parent_id}")
+
+        for sub_def in parent_def.get("subcategories", []):
+            # 2) Insertar/actualizar subcategoría
+            sub_doc = {
+                "name": sub_def["name"],
+                "description": sub_def.get("description", ""),
+                "parent": parent_id,
+                "parentName": parent_def["name"],
+                "createdAt": NOW,
+                "updatedAt": NOW,
+            }
+            sub_id = upsert_category(cat_coll, sub_doc)
+            total_cats += 1
+            print(f"    [subcat] {sub_def['name']} → {sub_id}")
+
+            tag_ids = []
+            for tag_name_str in sub_def.get("tags", []):
+                # 3) Insertar/actualizar tag vinculado a la subcategoría
+                tag_doc = {
+                    "name": tag_name_str,
+                    "tag": tag_name_str,
+                    "categoryId": sub_id,
+                    "categoryName": sub_def["name"],
+                    "parentCategoryId": parent_id,
+                    "parentCategoryName": parent_def["name"],
+                    "createdAt": NOW,
+                    "updatedAt": NOW,
+                }
+                tid = upsert_tag(tags_coll, tag_doc)
+                tag_ids.append(tid)
+                total_tags += 1
+                print(f"      [tag] {tag_name_str} → {tid}")
+
+            # Actualizar la subcategoría con los IDs de los tags
+            if tag_ids:
+                cat_coll.update_one(
+                    {"_id": sub_id},
+                    {"$set": {"tags": tag_ids, "updatedAt": NOW}},
+                )
+
+    return total_cats, total_tags
+
+
+def main():
+    print("=" * 60)
+    print("seed_data.py — Spring Boot, Data & IA")
+    print("=" * 60)
+    print(f"Conectando a: {MONGODB_URI}")
+
+    try:
+        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=MONGO_TIMEOUT_MS)
+        db = client[DB_NAME]
+        # Verificar conexión
+        db.command("ping")
+        print(f"✅ Conexión OK — base de datos: {DB_NAME}\n")
+    except Exception as exc:
+        print(f"❌ No se pudo conectar a MongoDB: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    # Usuario autor
+    try:
+        upsert_admin_user(db[USERS_COLL])
+        print(f"✅ Usuario '{AUTHOR_USERNAME}' listo en '{USERS_COLL}'.\n")
+    except Exception as exc:
+        print(f"⚠️  No se pudo crear el usuario admin: {exc}", file=sys.stderr)
+
+    # Seed categorías y tags
+    print("Sembrando categorías y tags…\n")
+    try:
+        total_cats, total_tags = seed(db)
+    except Exception as exc:
+        print(f"❌ Error durante el seed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print()
+    print("=" * 60)
+    print(f"✅ Seed completado:")
+    print(f"   • Categorías/subcategorías: {total_cats}")
+    print(f"   • Tags:                     {total_tags}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()

@@ -11,6 +11,7 @@ services:
       MONGO_INITDB_DATABASE: ${DB_NAME:-blogdb}
     volumes:
       - mongo_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s

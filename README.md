@@ -64,7 +64,39 @@ Abre `.env` con tu editor y rellena, como mínimo:
 pip install -r requirements.txt
 ```
 
-### 5. Ejecutar el script
+### 5. Sembrar categorías y tags predefinidos
+
+Antes de generar artículos, es necesario que la base de datos tenga categorías y
+tags. Puedes hacerlo de dos formas:
+
+**Opción A – Automática (con Docker Compose)**
+
+Al levantar el contenedor por primera vez, el script `mongo-init/init_seed.js`
+se ejecuta automáticamente y siembra todos los datos. No necesitas hacer nada más.
+
+> **Nota:** Este seed automático solo ocurre cuando el volumen `mongo_data` está
+> vacío (primera vez). Si ya tienes el contenedor corriendo, usa la Opción B.
+
+**Opción B – Manual (script Python)**
+
+Con MongoDB ya en marcha, ejecuta:
+
+```bash
+python seed_data.py
+```
+
+El script crea (o actualiza de forma idempotente) los siguientes temas:
+
+| Categoría padre | Subcategorías |
+|---|---|
+| **Spring Boot** | Spring Boot Core · Spring Security · Spring Data JPA · Spring MVC REST · Spring Boot Testing · Lombok |
+| **Data & Persistencia** | JPA e Hibernate · Bases de Datos SQL · NoSQL y MongoDB · Migraciones de Esquema |
+| **Inteligencia Artificial** | Spring AI · LLMs y Modelos de Lenguaje · Machine Learning con Java · Vector Databases y RAG |
+
+Cada subcategoría incluye 8-10 tags específicos (p. ej. `@Entity y @Table`,
+`JWT Authentication`, `RAG (Retrieval Augmented Generation)`).
+
+### 6. Ejecutar el script principal
 
 ```bash
 python generateArticle.py
@@ -77,7 +109,7 @@ El script:
 4. Genera el artículo con OpenAI.
 5. Lo guarda en la base de datos y te notifica por correo.
 
-### 6. Ejecutar los tests
+### 7. Ejecutar los tests
 
 ```bash
 pip install pytest
