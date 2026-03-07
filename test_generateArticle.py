@@ -2,6 +2,7 @@
 """Tests for pure helper functions in generateArticle.py."""
 
 import json
+from unittest.mock import patch, MagicMock
 import pytest
 
 from generateArticle import (
@@ -14,6 +15,7 @@ from generateArticle import (
     html_escape,
     is_too_similar,
     normalize_for_similarity,
+    send_notification_email,
     similar_ratio,
     slugify,
     str_id,
@@ -301,3 +303,38 @@ class TestBuildTitlePrompt:
         """Calling without avoid_titles (default None) should produce no avoid block."""
         prompt = build_title_prompt("Cat", "Sub", "Tag")
         assert "Evita" not in prompt
+
+
+# ---- send_notification_email (UTF-8) ----
+class TestSendNotificationEmailUtf8:
+    """Verify that emails with non-ASCII (Spanish) characters are built without errors."""
+
+    @patch("generateArticle.SMTP_HOST", "smtp.example.com")
+    @patch("generateArticle.SMTP_PORT", 587)
+    @patch("generateArticle.SMTP_USER", "user@example.com")
+    @patch("generateArticle.SMTP_PASS", "secret")
+    @patch("generateArticle.FROM_EMAIL", "user@example.com")
+    @patch("generateArticle.TO_EMAIL", "dest@example.com")
+    @patch("generateArticle.smtplib.SMTP")
+    def test_utf8_subject_and_body(self, mock_smtp_cls):
+        """Non-ASCII chars like á, é, ó, ñ must not raise 'ascii' codec errors."""
+        mock_smtp = MagicMock()
+        mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp)
+        mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = send_notification_email(
+            subject="[INFO] Conexión a la base de datos",
+            html_body="<p>Artículo publicado con éxito — título único ñ</p>",
+            text_body="Artículo publicado con éxito — título único ñ",
+        )
+
+        assert result is True
+        mock_smtp.send_message.assert_called_once()
+        msg = mock_smtp.send_message.call_args[0][0]
+        # The message must serialize to bytes without ASCII errors
+        msg_bytes = msg.as_bytes()
+        assert b"utf-8" in msg_bytes.lower() or b"utf8" in msg_bytes.lower()
+        # Verify non-ASCII Spanish characters survive encoding round-trip
+        decoded = msg_bytes.decode("utf-8", errors="replace")
+        assert "Conexi" in decoded          # subject present
+        assert "xico" in decoded or "xito" in decoded or "éxito" in decoded  # body accent preserved

@@ -65,14 +65,30 @@ Abre `.env` con tu editor y rellena, como mínimo:
 | Variable | Qué poner |
 |---|---|
 | `MONGODB_URI` | URI de Atlas: `mongodb+srv://ex_dbuser:<db_password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0` (sustituye `<db_password>`) |
-| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`) |
-| `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP) |
+| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys) |
+| `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP). Si usas Gmail, [crea una contraseña de aplicación aquí](https://myaccount.google.com/apppasswords) |
 | `AUTHOR_USERNAME` | Nombre del usuario autor en tu base de datos |
 | `SITE` | URL de tu web (p. ej. `https://tusitio.com`) |
 
 > **Nota:** Si usas el `docker-compose.yml` incluido para MongoDB local, cambia `MONGODB_URI` a `mongodb://admin:admin1234@localhost:27017/blogdb?authSource=admin`.
 
-### 4. Instalar dependencias de Python
+### 4. Crear el entorno virtual e instalar dependencias
+
+Crea el entorno virtual (`.venv`):
+
+```bash
+python3 -m venv .venv
+```
+
+Actívalo:
+
+```bash
+source .venv/bin/activate
+```
+
+> Verás que ahora tu terminal muestra `(.venv)` al principio de la línea.
+
+Instala las dependencias:
 
 ```bash
 pip install -r requirements.txt
@@ -114,7 +130,7 @@ Cada subcategoría incluye 8-10 tags específicos (p. ej. `@Entity y @Table`,
 ### 6. Ejecutar el script principal
 
 ```bash
-python generateArticle.py
+python3 generateArticle.py
 ```
 
 El script:
