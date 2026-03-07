@@ -65,8 +65,8 @@ Abre `.env` con tu editor y rellena, como mínimo:
 | Variable | Qué poner |
 |---|---|
 | `MONGODB_URI` | URI de Atlas: `mongodb+srv://ex_dbuser:<db_password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0` (sustituye `<db_password>`) |
-| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`) |
-| `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP) |
+| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys) |
+| `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP). Si usas Gmail, [crea una contraseña de aplicación aquí](https://myaccount.google.com/apppasswords) |
 | `AUTHOR_USERNAME` | Nombre del usuario autor en tu base de datos |
 | `SITE` | URL de tu web (p. ej. `https://tusitio.com`) |
 
