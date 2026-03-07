@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Kubernetes – ignorar ficheros de secretos con valores reales
+# (renombra k8s/secret.yaml con valores reales a k8s/secret.local.yaml)
+k8s/secret.local.yaml
+
 # Virtual environment
 .venv/
 

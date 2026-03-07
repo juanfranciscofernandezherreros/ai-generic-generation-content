@@ -1,0 +1,57 @@
+# ============================================================
+# CronJob – ejecuta el generador de artículos una vez a la semana
+# ============================================================
+# Requisitos previos:
+#   kubectl apply -f k8s/configmap.yaml
+#   kubectl apply -f k8s/secret.yaml
+#
+# Aplicar:
+#   kubectl apply -f k8s/cronjob.yaml
+#
+# Ejecutar manualmente (Job puntual desde el CronJob):
+#   kubectl create job article-generator-manual \
+#     --from=cronjob/article-generator
+# ============================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: article-generator
+  labels:
+    app: article-generator
+spec:
+  # Cada lunes a las 08:00 (hora Europe/Madrid) – ajusta según tu zona horaria
+  schedule: "0 8 * * 1"
+  timeZone: "Europe/Madrid"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # Tiempo máximo de ejecución (5 minutos)
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: article-generator
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: article-generator
+              image: article-generator:latest
+              # Usa imagePullPolicy: Always si la imagen se publica en un registry
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - configMapRef:
+                    name: article-generator-config
+                - secretRef:
+                    name: article-generator-secret
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "256Mi"
+          # Descomenta si necesitas un imagePullSecret para un registry privado:
+          # imagePullSecrets:
+          #   - name: my-registry-secret

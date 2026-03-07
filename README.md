@@ -7,6 +7,8 @@ Sistema de generación y publicación automática de artículos técnicos con in
 ## 📑 Índice
 
 - [🚀 Guía rápida de ejecución](#-guía-rápida-de-ejecución)
+- [🐳 Despliegue con Docker](#-despliegue-con-docker)
+- [☸️ Despliegue en Kubernetes](#️-despliegue-en-kubernetes)
 - [📰 ¿Qué es este script?](#-qué-es-este-script)
 - [🔍 Funcionalidades SEO](#-funcionalidades-seo)
 - [⚙️ ¿Qué necesita para funcionar?](#️-qué-necesita-para-funcionar)
@@ -178,6 +180,150 @@ docker compose down
 
 # Parar y borrar el volumen de datos
 docker compose down -v
+```
+
+---
+
+## 🐳 Despliegue con Docker
+
+### Construir la imagen
+
+```bash
+docker build -t article-generator:latest .
+```
+
+### Ejecutar pasando el fichero `.env`
+
+El modo más sencillo: todas las variables del `.env` se inyectan en el contenedor con `--env-file`.
+
+```bash
+docker run --rm --env-file .env article-generator:latest
+```
+
+### Ejecutar con variables individuales (`-e`)
+
+Útil en CI/CD o cuando las credenciales vienen de un gestor de secretos:
+
+```bash
+docker run --rm \
+  -e MONGODB_URI="mongodb+srv://ex_dbuser:<password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0" \
+  -e DB_NAME=blogdb \
+  -e CATEGORY_COLL=categories \
+  -e TAGS_COLL=tags \
+  -e USERS_COLL=users \
+  -e ARTICLES_COLL=articles \
+  -e OPENAIAPIKEY="sk-XXXXXXXXXXXXXXXXXXXX" \
+  -e OPENAI_MODEL=gpt-4o \
+  -e SITE="https://tusitio.com" \
+  -e AUTHOR_USERNAME=adminUser \
+  -e SMTP_HOST=smtp.gmail.com \
+  -e SMTP_PORT=587 \
+  -e SMTP_USER="tu_correo@gmail.com" \
+  -e SMTP_PASS="tu_contraseña_de_aplicacion" \
+  -e FROM_EMAIL="tu_correo@gmail.com" \
+  -e NOTIFY_EMAIL="tu_correo@gmail.com" \
+  -e NOTIFY_VERBOSE=true \
+  -e LIMIT_PUBLICATION=true \
+  -e SEND_PROMPT_EMAIL=false \
+  article-generator:latest
+```
+
+### Sembrar datos con Docker
+
+```bash
+docker run --rm --env-file .env article-generator:latest python seed_data.py
+```
+
+### Usar Docker Compose (MongoDB local + app)
+
+El servicio `app` tiene el perfil `run` para evitar que se lance junto con MongoDB en el arranque normal.
+
+```bash
+# 1. Levantar solo MongoDB
+docker compose up -d
+
+# 2. Ejecutar el generador de artículos una vez (usa MongoDB del compose)
+docker compose --profile run up app
+```
+
+---
+
+## ☸️ Despliegue en Kubernetes
+
+El directorio `k8s/` contiene los manifiestos necesarios para ejecutar el generador como un **CronJob semanal** en Kubernetes.
+
+```
+k8s/
+├── configmap.yaml   # Variables no sensibles (DB_NAME, SMTP_HOST, etc.)
+├── secret.yaml      # Plantilla para variables sensibles (MONGODB_URI, OPENAIAPIKEY…)
+└── cronjob.yaml     # CronJob – se ejecuta cada lunes a las 08:00 (Europe/Madrid)
+```
+
+### Paso 1 – Publicar la imagen en un registry
+
+```bash
+# Ejemplo con Docker Hub
+docker tag article-generator:latest <tu-usuario>/article-generator:latest
+docker push <tu-usuario>/article-generator:latest
+```
+
+Actualiza el campo `image:` en `k8s/cronjob.yaml` con la ruta completa de tu registry.
+
+### Paso 2 – Configurar el ConfigMap
+
+Edita `k8s/configmap.yaml` con los valores adecuados para tu entorno y aplícalo:
+
+```bash
+kubectl apply -f k8s/configmap.yaml
+```
+
+### Paso 3 – Configurar el Secret
+
+Codifica cada valor sensible en base64 y rellena `k8s/secret.yaml` (o crea `k8s/secret.local.yaml`, que ya está en `.gitignore`, para no modificar la plantilla):
+
+```bash
+# Generar los valores codificados
+echo -n "mongodb+srv://..." | base64
+echo -n "sk-XXXX"          | base64
+echo -n "correo@gmail.com" | base64
+echo -n "contraseña_app"   | base64
+```
+
+Rellena `k8s/secret.yaml` (o `secret.local.yaml`) con los valores y aplícalo:
+
+```bash
+kubectl apply -f k8s/secret.yaml   # o secret.local.yaml
+```
+
+### Paso 4 – Aplicar el CronJob
+
+```bash
+kubectl apply -f k8s/cronjob.yaml
+```
+
+Comprueba que se ha creado:
+
+```bash
+kubectl get cronjob article-generator
+```
+
+### Ejecutar el CronJob manualmente
+
+```bash
+kubectl create job article-generator-manual \
+  --from=cronjob/article-generator
+```
+
+Consulta los logs:
+
+```bash
+kubectl logs -l app=article-generator --tail=100
+```
+
+### Limpiar todos los recursos
+
+```bash
+kubectl delete -f k8s/
 ```
 
 ---

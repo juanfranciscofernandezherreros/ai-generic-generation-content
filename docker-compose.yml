@@ -19,5 +19,24 @@ services:
       retries: 5
       start_period: 10s
 
+  # ── Generador de artículos ────────────────────────────────────────────────
+  # Ejecuta generateArticle.py una vez y termina (perfil "run").
+  # Uso:  docker compose --profile run up app
+  app:
+    build: .
+    image: article-generator:latest
+    profiles:
+      - run
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - .env
+    # Permite sobrescribir variables concretas sin editar .env
+    environment:
+      # Cuando se usa MongoDB local del compose, apunta al servicio "mongodb"
+      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:admin1234@mongodb:27017/blogdb?authSource=admin}
+    restart: "no"
+
 volumes:
   mongo_data:

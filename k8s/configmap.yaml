@@ -1,0 +1,27 @@
+# ============================================================
+# ConfigMap – variables de entorno no sensibles
+# ============================================================
+# Aplicar:  kubectl apply -f k8s/configmap.yaml
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: article-generator-config
+  labels:
+    app: article-generator
+data:
+  DB_NAME: "blogdb"
+  CATEGORY_COLL: "categories"
+  TAGS_COLL: "tags"
+  USERS_COLL: "users"
+  ARTICLES_COLL: "articles"
+  OPENAI_MODEL: "gpt-4o"
+  SITE: "https://tusitio.com"
+  AUTHOR_USERNAME: "adminUser"
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  FROM_EMAIL: "tu_correo@gmail.com"
+  NOTIFY_EMAIL: "tu_correo@gmail.com"
+  NOTIFY_VERBOSE: "true"
+  LIMIT_PUBLICATION: "true"
+  SEND_PROMPT_EMAIL: "false"
