@@ -7,6 +7,7 @@ import pytest
 from generateArticle import (
     as_list,
     build_generation_prompt,
+    build_title_prompt,
     count_words,
     estimate_reading_time,
     extract_plain_text,
@@ -23,6 +24,8 @@ from generateArticle import (
     SIMILARITY_THRESHOLD_STRICT,
     MAX_TITLE_RETRIES,
     RECENT_TITLES_LIMIT,
+    META_TITLE_MAX_LENGTH,
+    MAX_AVOID_TITLES_IN_PROMPT,
 )
 
 
@@ -260,3 +263,41 @@ class TestConstants:
 
     def test_recent_limit_positive(self):
         assert RECENT_TITLES_LIMIT > 0
+
+    def test_max_avoid_titles_in_prompt_positive(self):
+        assert MAX_AVOID_TITLES_IN_PROMPT > 0
+
+
+# ---- build_title_prompt ----
+class TestBuildTitlePrompt:
+    def test_contains_tag_and_category(self):
+        prompt = build_title_prompt("Spring Boot", "Lombok", "@Builder")
+        assert "@Builder" in prompt
+        assert "Spring Boot" in prompt
+        assert "Lombok" in prompt
+
+    def test_avoid_titles_included(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag", avoid_titles=["Título existente"])
+        assert "Título existente" in prompt
+
+    def test_seo_instructions_present(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag")
+        assert "SEO" in prompt
+
+    def test_title_max_chars_constraint(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag")
+        assert str(META_TITLE_MAX_LENGTH) in prompt
+
+    def test_returns_string(self):
+        result = build_title_prompt("A", "B", "C")
+        assert isinstance(result, str)
+        assert len(result) > 30
+
+    def test_no_avoid_titles_no_avoid_block(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag", avoid_titles=[])
+        assert "Evita" not in prompt
+
+    def test_default_none_avoid_titles_no_avoid_block(self):
+        """Calling without avoid_titles (default None) should produce no avoid block."""
+        prompt = build_title_prompt("Cat", "Sub", "Tag")
+        assert "Evita" not in prompt
