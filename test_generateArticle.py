@@ -28,6 +28,10 @@ from generateArticle import (
     RECENT_TITLES_LIMIT,
     META_TITLE_MAX_LENGTH,
     MAX_AVOID_TITLES_IN_PROMPT,
+    GENERATION_SYSTEM_MSG,
+    TITLE_SYSTEM_MSG,
+    OPENAI_MAX_ARTICLE_TOKENS,
+    OPENAI_MAX_TITLE_TOKENS,
 )
 
 
@@ -250,6 +254,19 @@ class TestBuildGenerationPrompt:
         assert isinstance(result, str)
         assert len(result) > 100
 
+    def test_prompt_is_compact(self):
+        """Optimized prompt should be under 900 characters (excluding avoid titles)."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert len(prompt) < 900
+
+    def test_html_structure_instructions(self):
+        """Prompt must specify key HTML elements for article structure."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert "<h1>" in prompt or "h1" in prompt
+        assert "<h2>" in prompt or "h2" in prompt
+        assert "FAQ" in prompt
+        assert "JSON" in prompt
+
 
 # ---- Constants ----
 class TestConstants:
@@ -268,6 +285,21 @@ class TestConstants:
 
     def test_max_avoid_titles_in_prompt_positive(self):
         assert MAX_AVOID_TITLES_IN_PROMPT > 0
+
+    def test_max_article_tokens_positive(self):
+        assert OPENAI_MAX_ARTICLE_TOKENS > 0
+
+    def test_max_title_tokens_positive(self):
+        assert OPENAI_MAX_TITLE_TOKENS > 0
+        assert OPENAI_MAX_TITLE_TOKENS < OPENAI_MAX_ARTICLE_TOKENS
+
+    def test_generation_system_msg_is_nonempty_string(self):
+        assert isinstance(GENERATION_SYSTEM_MSG, str)
+        assert len(GENERATION_SYSTEM_MSG) > 0
+
+    def test_title_system_msg_is_nonempty_string(self):
+        assert isinstance(TITLE_SYSTEM_MSG, str)
+        assert len(TITLE_SYSTEM_MSG) > 0
 
 
 # ---- build_title_prompt ----

@@ -62,6 +62,15 @@ MONGO_TIMEOUT_MS             = 5000   # serverSelectionTimeoutMS
 META_TITLE_MAX_LENGTH        = 60     # máx. caracteres para metaTitle SEO
 META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SEO
 MAX_AVOID_TITLES_IN_PROMPT   = 5      # máx. títulos a incluir en el prompt (mantiene prompts cortos)
+OPENAI_MAX_ARTICLE_TOKENS    = 4096   # límite de tokens de salida para artículos
+OPENAI_MAX_TITLE_TOKENS      = 100    # límite de tokens de salida para títulos
+
+# ============ SYSTEM MESSAGES (reutilizados en ambas APIs) ============
+GENERATION_SYSTEM_MSG = (
+    "Eres redactor técnico sénior de Spring Boot y Lombok. "
+    "Devuelves SOLO JSON válido con: title, summary, body (HTML semántico), keywords."
+)
+TITLE_SYSTEM_MSG = "Devuelve solo el título solicitado, sin comillas ni texto adicional."
 
 # ============ HELPERS ============
 def str_id(x: Any) -> str:
@@ -307,40 +316,25 @@ def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, a
     if avoid_titles:
         avoid_list = [t.replace('"', '\"') for t in avoid_titles[:MAX_AVOID_TITLES_IN_PROMPT]]
         avoid_block = (
-            "\n- Evita usar títulos iguales o muy similares a cualquiera de estos: "
+            "\nEvita títulos iguales o muy similares a: "
             + "; ".join(f'"{t}"' for t in avoid_list)
         )
-    return f"""
-Eres redactor técnico sénior especializado en desarrollo de software con Spring Boot y Lombok.
-Genera un artículo **en español** devolviendo **únicamente** un objeto JSON con esta estructura:
-{{
-  "title": "...",
-  "summary": "...",
-  "body": "...",
-  "keywords": ["keyword1", "keyword2", "keyword3"]
-}}
+    return f"""Artículo en español sobre "{tag_text}" (categoría: "{parent_name}", subcategoría: "{subcat_name}").
+Devuelve SOLO JSON: {{"title":"...","summary":"...","body":"...","keywords":[...]}}
 
-Reglas de contenido:
-- El tema principal es "{tag_text}" dentro de la categoría "{parent_name}" y subcategoría "{subcat_name}".
-- "title": atractivo, claro, conciso (máx. 60 caracteres), optimizado para SEO. Incluye la palabra clave principal.
-- "summary": 2-3 frases que expliquen el valor del artículo. Debe funcionar como meta-descripción SEO (máx. 160 caracteres).
-- "keywords": lista de 3-7 palabras clave SEO relevantes para el artículo (en minúsculas, sin repetir el título exacto).
-- "body": HTML semántico y bien formado que incluya:
-  · <h1> con el título (sin emojis en el h1).
-  · Introducción breve (<p>) que enganche al lector y presente el problema que resuelve el tema.
-  · 3-5 secciones <h2> con explicación técnica, buenas prácticas y casos de uso reales.
-  · Cuando proceda, ejemplos de código completos y funcionales en <pre><code class=\\"language-...\\"> ... </code></pre>.
-  · Los ejemplos deben seguir las convenciones del framework y ser copiables directamente.
-  · Una sección <h2> "Preguntas frecuentes (FAQ)" con 3-5 preguntas en <h3> y respuestas en <p>.
-  · Una breve conclusión <h2> con resumen de puntos clave y llamada a la acción (CTA).
-  · Usa listas (<ul>/<ol>) para enumerar ventajas, pasos o comparativas.
+title: SEO, conciso (máx. 60 caracteres), palabra clave principal incluida.
+summary: meta-descripción SEO (máx. 160 caracteres), 2-3 frases con el valor del artículo.
+keywords: 3-7 palabras clave SEO en minúsculas, sin repetir título.
+body (HTML semántico bien cerrado):
+- <h1> con título (sin emojis).
+- Intro <p> que enganche y presente el problema.
+- 3-5 secciones <h2>: explicación técnica, buenas prácticas, casos reales.
+- Código en <pre><code class="language-...">. Funcional, copiable, convenciones del framework.
+- <h2> FAQ: 3-5 preguntas en <h3> con respuestas en <p>.
+- <h2> Conclusión con resumen y CTA.
+- Listas <ul>/<ol> para ventajas, pasos o comparativas.
 
-Reglas de calidad:
-- Contenido 100 % original, técnicamente correcto y listo para publicar.
-- Tono profesional pero accesible; evita relleno o frases genéricas.
-- Si el tema encaja, incluye ejemplo práctico con Lombok y/o Spring Boot.
-- Asegúrate de que el HTML no tenga etiquetas sin cerrar.
-- Escapa correctamente comillas dentro de los valores para que el JSON sea válido.{avoid_block}
+Tono profesional, sin relleno. JSON con comillas escapadas.{avoid_block}
 """
 
 def build_title_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
@@ -630,7 +624,12 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
 
     # 1) Intento con API moderna (Responses) — con reintentos
     def _call_responses():
-        resp = client_ai.responses.create(model=OPENAI_MODEL, input=prompt)
+        resp = client_ai.responses.create(
+            model=OPENAI_MODEL,
+            instructions=GENERATION_SYSTEM_MSG,
+            input=prompt,
+            max_output_tokens=OPENAI_MAX_ARTICLE_TOKENS,
+        )
         text = getattr(resp, "output_text", None)
         if not text and hasattr(resp, "content") and resp.content:
             for c in resp.content:
@@ -652,10 +651,11 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
             chat = client_ai.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "Eres un redactor técnico que devuelve estrictamente JSON."},
+                    {"role": "system", "content": GENERATION_SYSTEM_MSG},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.7,
+                max_tokens=OPENAI_MAX_ARTICLE_TOKENS,
             )
             return chat.choices[0].message.content
 
@@ -699,7 +699,12 @@ def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str
     raw_text = None
 
     def _call_responses():
-        resp = client_ai.responses.create(model=OPENAI_MODEL, input=prompt)
+        resp = client_ai.responses.create(
+            model=OPENAI_MODEL,
+            instructions=TITLE_SYSTEM_MSG,
+            input=prompt,
+            max_output_tokens=OPENAI_MAX_TITLE_TOKENS,
+        )
         text = getattr(resp, "output_text", None)
         if not text and hasattr(resp, "content") and resp.content:
             for c in resp.content:
@@ -720,10 +725,11 @@ def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str
             chat = client_ai.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "Eres un redactor técnico. Devuelve solo el título solicitado, sin comillas ni texto adicional."},
+                    {"role": "system", "content": TITLE_SYSTEM_MSG},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.9,
+                max_tokens=OPENAI_MAX_TITLE_TOKENS,
             )
             return chat.choices[0].message.content
 
