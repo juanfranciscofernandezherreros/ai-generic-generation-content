@@ -67,10 +67,11 @@ OPENAI_MAX_TITLE_TOKENS      = 100    # límite de tokens de salida para título
 
 # ============ SYSTEM MESSAGES (reutilizados en ambas APIs) ============
 GENERATION_SYSTEM_MSG = (
-    "Eres redactor técnico sénior y experto en SEO especializado en Spring Boot, Java y tecnologías relacionadas. "
+    "Eres redactor técnico sénior y experto en SEO especializado en tecnología y desarrollo de software. "
     "Generas contenido optimizado para motores de búsqueda con HTML semántico, "
     "estructura de encabezados jerárquica (h1 > h2 > h3), uso estratégico de palabras clave "
     "y metadatos precisos. "
+    "El contenido que redactas está siempre relacionado con la categoría y el tag indicados en el prompt. "
     "Devuelves SOLO JSON válido con: title, summary, body (HTML semántico), keywords."
 )
 TITLE_SYSTEM_MSG = (
