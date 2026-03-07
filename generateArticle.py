@@ -60,6 +60,7 @@ OPENAI_RETRY_BASE_DELAY      = 2      # seg. base para backoff exponencial
 MONGO_TIMEOUT_MS             = 5000   # serverSelectionTimeoutMS
 META_TITLE_MAX_LENGTH        = 60     # máx. caracteres para metaTitle SEO
 META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SEO
+MAX_AVOID_TITLES_IN_PROMPT   = 5      # máx. títulos a incluir en el prompt (mantiene prompts cortos)
 
 # ============ HELPERS ============
 def str_id(x: Any) -> str:
@@ -198,6 +199,34 @@ def preload_published_category_ids(db: Database) -> Set[str]:
     ]
     return {str(doc["_id"]) for doc in db[ARTICLES_COLL].aggregate(pipeline)}
 
+def preload_published_ids(db: Database) -> Tuple[Set[str], Set[str]]:
+    """
+    Devuelve (published_tag_ids, published_cat_ids) en una sola consulta usando $facet.
+    Evita dos round-trips a MongoDB respecto a llamar por separado a
+    preload_published_tag_ids + preload_published_category_ids.
+    """
+    pipeline = [
+        {"$match": {"status": "published"}},
+        {"$facet": {
+            "tags": [
+                {"$match": {"tags": {"$exists": True, "$ne": []}}},
+                {"$unwind": "$tags"},
+                {"$group": {"_id": "$tags"}},
+            ],
+            "categories": [
+                {"$match": {"category": {"$exists": True, "$ne": None}}},
+                {"$group": {"_id": "$category"}},
+            ],
+        }},
+    ]
+    result = list(db[ARTICLES_COLL].aggregate(pipeline))
+    if not result:
+        return set(), set()
+    facet = result[0]
+    published_tag_ids = {str(doc["_id"]) for doc in facet.get("tags", [])}
+    published_cat_ids = {str(doc["_id"]) for doc in facet.get("categories", [])}
+    return published_tag_ids, published_cat_ids
+
 # ========= Retry con back-off exponencial =========
 def _retry_with_backoff(fn: Callable, max_retries: int = OPENAI_MAX_RETRIES, base_delay: float = OPENAI_RETRY_BASE_DELAY) -> Any:
     """Ejecuta *fn()* con reintentos y back-off exponencial. Reintenta solo errores transitorios."""
@@ -274,7 +303,7 @@ def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, a
     avoid_titles = avoid_titles or []
     avoid_block = ""
     if avoid_titles:
-        avoid_list = [t.replace('"', '\"') for t in avoid_titles[:5]]
+        avoid_list = [t.replace('"', '\"') for t in avoid_titles[:MAX_AVOID_TITLES_IN_PROMPT]]
         avoid_block = (
             "\n- Evita usar títulos iguales o muy similares a cualquiera de estos: "
             + "; ".join(f'"{t}"' for t in avoid_list)
@@ -311,6 +340,24 @@ Reglas de calidad:
 - Asegúrate de que el HTML no tenga etiquetas sin cerrar.
 - Escapa correctamente comillas dentro de los valores para que el JSON sea válido.{avoid_block}
 """
+
+def build_title_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
+    """Construye un prompt ligero para generar únicamente el título de un artículo."""
+    avoid_titles = avoid_titles or []
+    avoid_block = ""
+    if avoid_titles:
+        avoid_list = [t.replace('"', '\\"') for t in avoid_titles[:MAX_AVOID_TITLES_IN_PROMPT]]
+        avoid_block = (
+            "\nEvita títulos iguales o muy similares a cualquiera de estos: "
+            + "; ".join(f'"{t}"' for t in avoid_list)
+        )
+    return (
+        f'Genera un título de artículo técnico en español para el tema "{tag_text}" '
+        f'(categoría: "{parent_name}", subcategoría: "{subcat_name}").\n'
+        f"Requisitos: atractivo, conciso (máx. {META_TITLE_MAX_LENGTH} caracteres), "
+        f"optimizado para SEO, incluye la palabra clave principal.{avoid_block}\n"
+        "Devuelve ÚNICAMENTE el texto del título, sin comillas ni texto adicional."
+    )
 
 def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles=None):
     """
@@ -641,6 +688,53 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
 
     return title, summary, body, keywords
 
+def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
+    """
+    Genera únicamente el título del artículo con una llamada ligera a OpenAI.
+    Mucho más económico que regenerar el artículo completo en cada reintento.
+    """
+    prompt = build_title_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+    raw_text = None
+
+    def _call_responses():
+        resp = client_ai.responses.create(model=OPENAI_MODEL, input=prompt)
+        text = getattr(resp, "output_text", None)
+        if not text and hasattr(resp, "content") and resp.content:
+            for c in resp.content:
+                if getattr(c, "type", None) in (None, "output_text"):
+                    text = getattr(c, "text", None)
+                    if text:
+                        break
+        return text
+
+    try:
+        raw_text = _retry_with_backoff(_call_responses)
+    except Exception:
+        logger.info("API Responses no disponible; usando Chat Completions para título.")
+        raw_text = None
+
+    if not raw_text:
+        def _call_chat():
+            chat = client_ai.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "Eres un redactor técnico. Devuelve solo el título solicitado, sin comillas ni texto adicional."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.9,
+            )
+            return chat.choices[0].message.content
+
+        try:
+            raw_text = _retry_with_backoff(_call_chat)
+        except Exception as e:
+            raise RuntimeError(f"Fallo generando título con OpenAI: {e}")
+
+    if not raw_text:
+        raise RuntimeError("OpenAI no devolvió contenido para el título.")
+
+    return raw_text.strip().strip("\"'").strip()[:META_TITLE_MAX_LENGTH]
+
 def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, author_id):
     """Genera e inserta un artículo. Se asume que parent/subcat/tag ya cumplen la regla estricta."""
     tag_id = None
@@ -661,6 +755,8 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
 
     # Evita títulos recientes y del mismo tag (si hay tag) — construir antes de enviar email o llamar a IA
     avoid_titles = (recent_titles[:10] if recent_titles else []) + existing_titles_for_tag[:20]
+    # Lista combinada para la comprobación de similitud (evita dos iteraciones separadas)
+    all_check_titles = (recent_titles[:20] if recent_titles else []) + existing_titles_for_tag
 
     # Opcional: enviar el prompt por email antes de generar con OpenAI
     if SEND_PROMPT_EMAIL:
@@ -671,19 +767,31 @@ def ensure_article_for_tag(db, client_ai, tag, parent, subcat, recent_titles, au
             notify("Error enviando prompt por email", str(e), level="warning", always_email=True)
 
     max_attempts = MAX_TITLE_RETRIES
-    attempt = 0
     title = summary = body = None
     keywords: List[str] = []
 
-    while attempt < max_attempts:
-        attempt += 1
-        t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
-        if is_too_similar(t, recent_titles[:20], threshold=SIMILARITY_THRESHOLD_STRICT) or is_too_similar(t, existing_titles_for_tag, threshold=SIMILARITY_THRESHOLD_STRICT):
-            notify("Título similar detectado", f"Intento {attempt}/{max_attempts}: '{t}'. Reintentando...", level="warning", always_email=True)
-            avoid_titles.append(t)
-            continue
+    # Fase 1: Generar el artículo completo (única llamada costosa a OpenAI)
+    t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
+
+    if not is_too_similar(t, all_check_titles, threshold=SIMILARITY_THRESHOLD_STRICT):
         title, summary, body, keywords = t, s, b, kw
-        break
+    else:
+        # Fase 2: El cuerpo del artículo es válido; sólo regenerar el título (llamadas ligeras)
+        notify("Título similar detectado", f"Intento 1/{max_attempts}: '{t}'. Regenerando sólo el título...", level="warning", always_email=True)
+        avoid_titles.append(t)
+        for attempt in range(2, max_attempts + 1):
+            new_t = generate_title_with_ai(client_ai, parent_name, subcat_name, topic_text, avoid_titles=avoid_titles)
+            if not is_too_similar(new_t, all_check_titles, threshold=SIMILARITY_THRESHOLD_STRICT):
+                # Actualiza el <h1> del cuerpo para que coincida con el nuevo título
+                escaped_title = html_escape(new_t)
+                new_b, replacements = re.subn(r'<h1[^>]*>.*?</h1>', f'<h1>{escaped_title}</h1>', b, count=1, flags=re.DOTALL | re.IGNORECASE)
+                if not replacements:
+                    # El cuerpo no tenía <h1>; lo anteponemos
+                    new_b = f'<h1>{escaped_title}</h1>\n' + b
+                title, summary, body, keywords = new_t, s, new_b, kw
+                break
+            notify("Título similar detectado", f"Intento {attempt}/{max_attempts}: '{new_t}'. Reintentando...", level="warning", always_email=True)
+            avoid_titles.append(new_t)
 
     if not title or not body:
         notify("No se pudo generar título único", "Tras varios intentos no se logró un título suficientemente diferente.", level="error", always_email=True)
@@ -741,14 +849,16 @@ def main():
     notify("Inicio de proceso", "Comenzando ejecución de publicación automática.", level="info", always_email=True)
 
     # Validaciones de entorno mínimas
-    missing = []
-    if not OPENAIAPIKEY: missing.append("OPENAIAPIKEY")
-    if not MONGODB_URI:  missing.append("MONGODB_URI")
-    if not DB_NAME:      missing.append("DB_NAME")
-    if not ARTICLES_COLL: missing.append("ARTICLES_COLL")
-    if not USERS_COLL:    missing.append("USERS_COLL")
-    if not CATEGORY_COLL: missing.append("CATEGORY_COLL")
-    if not TAGS_COLL:     missing.append("TAGS_COLL")
+    _required_env = {
+        "OPENAIAPIKEY": OPENAIAPIKEY,
+        "MONGODB_URI":  MONGODB_URI,
+        "DB_NAME":      DB_NAME,
+        "ARTICLES_COLL": ARTICLES_COLL,
+        "USERS_COLL":    USERS_COLL,
+        "CATEGORY_COLL": CATEGORY_COLL,
+        "TAGS_COLL":     TAGS_COLL,
+    }
+    missing = [k for k, v in _required_env.items() if not v]
 
     if missing:
         msg = "Faltan variables de entorno: " + ", ".join(missing)
@@ -827,9 +937,8 @@ def main():
     recent_titles = get_recent_titles(db, limit=RECENT_TITLES_LIMIT)
     notify("Control de similitud", f"Títulos recientes cargados: {len(recent_titles)}", level="info", always_email=True)
 
-    # Pre-cargar conjuntos de cobertura (evita consultas N+1)
-    published_tag_ids = preload_published_tag_ids(db)
-    published_cat_ids = preload_published_category_ids(db)
+    # Pre-cargar conjuntos de cobertura en una sola consulta $facet (evita N+1)
+    published_tag_ids, published_cat_ids = preload_published_ids(db)
     logger.info("Cobertura pre-cargada — tags con artículo: %d, categorías con artículo: %d",
                 len(published_tag_ids), len(published_cat_ids))
 
