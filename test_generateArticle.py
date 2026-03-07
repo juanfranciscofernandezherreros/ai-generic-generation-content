@@ -24,6 +24,7 @@ from generateArticle import (
     tag_name,
     _extract_json_block,
     _safe_json_loads,
+    _language_name,
     SIMILARITY_THRESHOLD_DEFAULT,
     SIMILARITY_THRESHOLD_STRICT,
     MAX_TITLE_RETRIES,
@@ -34,6 +35,7 @@ from generateArticle import (
     TITLE_SYSTEM_MSG,
     OPENAI_MAX_ARTICLE_TOKENS,
     OPENAI_MAX_TITLE_TOKENS,
+    ARTICLE_LANGUAGE,
 )
 
 
@@ -486,7 +488,11 @@ class TestBuildJsonLdStructuredData:
 
     def test_language_is_spanish(self):
         data = self._make_data()
-        assert data["inLanguage"] == "es"
+        assert data["inLanguage"] == ARTICLE_LANGUAGE
+
+    def test_language_custom(self):
+        data = self._make_data(language="en")
+        assert data["inLanguage"] == "en"
 
     def test_author_name(self):
         data = self._make_data(author_name="testUser")
@@ -582,3 +588,79 @@ class TestSeoSystemMessages:
         """Prompt should instruct to use <strong>/<em> for keyword emphasis."""
         prompt = build_generation_prompt("Cat", "Sub", "Tag")
         assert "<strong>" in prompt or "strong" in prompt
+
+
+# ---- _language_name helper ----
+class TestLanguageName:
+    def test_spanish_code(self):
+        assert _language_name("es") == "español"
+
+    def test_english_code(self):
+        assert _language_name("en") == "inglés"
+
+    def test_french_code(self):
+        assert _language_name("fr") == "francés"
+
+    def test_german_code(self):
+        assert _language_name("de") == "alemán"
+
+    def test_portuguese_code(self):
+        assert _language_name("pt") == "portugués"
+
+    def test_case_insensitive(self):
+        assert _language_name("ES") == "español"
+        assert _language_name("En") == "inglés"
+
+    def test_unknown_code_returns_code(self):
+        assert _language_name("xx") == "xx"
+
+
+# ---- ARTICLE_LANGUAGE constant ----
+class TestArticleLanguageConstant:
+    def test_default_is_spanish(self):
+        """ARTICLE_LANGUAGE should default to 'es' when the env var is not set."""
+        with patch.dict("os.environ", {}, clear=False):
+            import os as _os
+            _os.environ.pop("ARTICLE_LANGUAGE", None)
+            value = _os.getenv("ARTICLE_LANGUAGE", "es")
+        assert value == "es"
+
+    def test_is_string(self):
+        assert isinstance(ARTICLE_LANGUAGE, str)
+        assert len(ARTICLE_LANGUAGE) > 0
+
+
+# ---- Multi-language support in prompts ----
+class TestMultiLanguagePrompts:
+    def test_generation_prompt_default_language_is_spanish(self):
+        """Default generation prompt must include the Spanish language name."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert "español" in prompt
+
+    def test_generation_prompt_english_language(self):
+        """Generation prompt with language='en' must include 'inglés'."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag", language="en")
+        assert "inglés" in prompt
+        assert "español" not in prompt
+
+    def test_generation_prompt_french_language(self):
+        prompt = build_generation_prompt("Cat", "Sub", "Tag", language="fr")
+        assert "francés" in prompt
+
+    def test_generation_prompt_unknown_language_uses_code(self):
+        """An unrecognised language code should appear literally in the prompt."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag", language="xx")
+        assert "xx" in prompt
+
+    def test_title_prompt_default_language_is_spanish(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag")
+        assert "español" in prompt
+
+    def test_title_prompt_english_language(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag", language="en")
+        assert "inglés" in prompt
+        assert "español" not in prompt
+
+    def test_title_prompt_german_language(self):
+        prompt = build_title_prompt("Cat", "Sub", "Tag", language="de")
+        assert "alemán" in prompt

@@ -50,6 +50,8 @@ NOTIFY_VERBOSE = (os.getenv("NOTIFY_VERBOSE", "true").lower() in ("1","true","ye
 LIMIT_PUBLICATION = (os.getenv("LIMIT_PUBLICATION", "true").lower() in ("1", "true", "yes", "y"))
 # Si es true, enviará por email el prompt de generación antes de llamar a OpenAI
 SEND_PROMPT_EMAIL = (os.getenv("SEND_PROMPT_EMAIL", "false").lower() in ("1", "true", "yes", "y"))
+# Idioma por defecto para los artículos generados (código ISO 639-1, p. ej. "es", "en", "fr")
+ARTICLE_LANGUAGE = os.getenv("ARTICLE_LANGUAGE", "es")
 
 # ============ CONSTANTS ============
 SIMILARITY_THRESHOLD_DEFAULT = 0.82   # umbral para is_too_similar genérico
@@ -64,6 +66,28 @@ META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SE
 MAX_AVOID_TITLES_IN_PROMPT   = 5      # máx. títulos a incluir en el prompt (mantiene prompts cortos)
 OPENAI_MAX_ARTICLE_TOKENS    = 4096   # límite de tokens de salida para artículos
 OPENAI_MAX_TITLE_TOKENS      = 100    # límite de tokens de salida para títulos
+
+# ============ IDIOMAS ============
+# Mapa de códigos ISO 639-1 a nombres de idioma (escritos en español, para usar en los prompts)
+_LANGUAGE_NAMES: Dict[str, str] = {
+    "es": "español",
+    "en": "inglés",
+    "fr": "francés",
+    "de": "alemán",
+    "it": "italiano",
+    "pt": "portugués",
+    "nl": "neerlandés",
+    "pl": "polaco",
+    "ru": "ruso",
+    "zh": "chino",
+    "ja": "japonés",
+    "ar": "árabe",
+}
+
+def _language_name(code: str) -> str:
+    """Devuelve el nombre del idioma (en español) para un código ISO 639-1.
+    Si el código no está en el mapa, devuelve el propio código."""
+    return _LANGUAGE_NAMES.get(code.lower(), code)
 
 # ============ SYSTEM MESSAGES (reutilizados en ambas APIs) ============
 GENERATION_SYSTEM_MSG = (
@@ -180,6 +204,7 @@ def build_json_ld_structured_data(
     category_name: str,
     tag_names: List[str],
     site: str,
+    language: str = ARTICLE_LANGUAGE,
 ) -> dict:
     """
     Genera datos estructurados JSON-LD (Schema.org) de tipo Article.
@@ -202,7 +227,7 @@ def build_json_ld_structured_data(
         "dateModified": date_modified,
         "wordCount": word_count,
         "timeRequired": f"PT{reading_time}M",
-        "inLanguage": "es",
+        "inLanguage": language,
         "keywords": ", ".join(keywords) if keywords else "",
         "articleSection": category_name,
     }
@@ -376,7 +401,7 @@ def get_related_tags_for_category(cat_or_subcat, tags, tags_by_id, tags_by_name)
             uniq.append(t)
     return uniq
 
-def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
+def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
     avoid_titles = avoid_titles or []
     avoid_block = ""
     if avoid_titles:
@@ -385,7 +410,8 @@ def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str, a
             "\nEvita títulos iguales o muy similares a: "
             + "; ".join(f'"{t}"' for t in avoid_list)
         )
-    return f"""Artículo SEO en español sobre "{tag_text}" (categoría: "{parent_name}", subcategoría: "{subcat_name}").
+    lang = _language_name(language)
+    return f"""Artículo SEO en {lang} sobre "{tag_text}" (categoría: "{parent_name}", subcategoría: "{subcat_name}").
 Devuelve SOLO JSON: {{"title":"...","summary":"...","body":"...","keywords":[...]}}
 
 title: optimizado para SEO y CTR, conciso (máx. 60 caracteres), incluye palabra clave principal al inicio.
@@ -406,7 +432,7 @@ body (HTML semántico bien cerrado, optimizado para SEO on-page):
 Tono profesional, sin relleno. JSON con comillas escapadas.{avoid_block}
 """
 
-def build_title_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
+def build_title_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
     """Construye un prompt ligero para generar únicamente el título de un artículo."""
     avoid_titles = avoid_titles or []
     avoid_block = ""
@@ -416,8 +442,9 @@ def build_title_prompt(parent_name: str, subcat_name: str, tag_text: str, avoid_
             "\nEvita títulos iguales o muy similares a cualquiera de estos: "
             + "; ".join(f'"{t}"' for t in avoid_list)
         )
+    lang = _language_name(language)
     return (
-        f'Genera un título de artículo técnico en español para el tema "{tag_text}" '
+        f'Genera un título de artículo técnico en {lang} para el tema "{tag_text}" '
         f'(categoría: "{parent_name}", subcategoría: "{subcat_name}").\n'
         f"Requisitos: atractivo, conciso (máx. {META_TITLE_MAX_LENGTH} caracteres), "
         f"optimizado para SEO, incluye la palabra clave principal.{avoid_block}\n"
@@ -681,13 +708,13 @@ def _safe_json_loads(s: str) -> dict:
         s2 = s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2019", "'")
         return json.loads(s2)
 
-def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> Tuple[str, str, str, List[str]]:
+def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> Tuple[str, str, str, List[str]]:
     """
     Llama a OpenAI para generar el artículo. Devuelve (title, summary, body, keywords).
     Soporta SDK nuevo (responses.create) y el anterior (chat.completions.create).
     Incluye reintentos con back-off exponencial para errores transitorios.
     """
-    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+    prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
 
     raw_text = None
 
@@ -759,12 +786,12 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
 
     return title, summary, body, keywords
 
-def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None) -> str:
+def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
     """
     Genera únicamente el título del artículo con una llamada ligera a OpenAI.
     Mucho más económico que regenerar el artículo completo en cada reintento.
     """
-    prompt = build_title_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles)
+    prompt = build_title_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
     raw_text = None
 
     def _call_responses():
