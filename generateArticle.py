@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from email.message import EmailMessage
 from email.header import Header
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -38,8 +39,9 @@ USERS_COLL      = os.getenv("USERS_COLL")
 ARTICLES_COLL   = os.getenv("ARTICLES_COLL")
 SITE            = os.getenv("SITE") or ""
 OPENAIAPIKEY    = os.getenv("OPENAIAPIKEY")
+GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME") or "adminUser"
-OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-5")
+OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 # Notificaciones
 SMTP_HOST   = os.getenv("SMTP_HOST")
@@ -55,6 +57,9 @@ LIMIT_PUBLICATION = (os.getenv("LIMIT_PUBLICATION", "true").lower() in ("1", "tr
 SEND_PROMPT_EMAIL = (os.getenv("SEND_PROMPT_EMAIL", "false").lower() in ("1", "true", "yes", "y"))
 # Idioma por defecto para los artículos generados (código ISO 639-1, p. ej. "es", "en", "fr")
 ARTICLE_LANGUAGE = os.getenv("ARTICLE_LANGUAGE", "es")
+# Temperature para la generación de artículos y títulos (0.0 – 1.0)
+AI_TEMPERATURE_ARTICLE = float(os.getenv("AI_TEMPERATURE_ARTICLE", "0.7"))
+AI_TEMPERATURE_TITLE   = float(os.getenv("AI_TEMPERATURE_TITLE",   "0.9"))
 
 # ============ CONSTANTS ============
 SIMILARITY_THRESHOLD_DEFAULT = 0.82   # umbral para is_too_similar genérico
@@ -711,6 +716,10 @@ def _safe_json_loads(s: str) -> dict:
         s2 = s.replace("\u201c", "\"").replace("\u201d", "\"").replace("\u2019", "'")
         return json.loads(s2)
 
+def _is_gemini_model(model: str) -> bool:
+    """Devuelve True si el nombre de modelo corresponde a un modelo de Google Gemini."""
+    return model.lower().startswith("gemini")
+
 def _generate_with_langchain(
     system_msg: str,
     user_prompt: str,
@@ -718,16 +727,25 @@ def _generate_with_langchain(
     temperature: float = 0.7,
 ) -> str:
     """
-    Invoca el modelo de lenguaje mediante LangChain (ChatOpenAI + LCEL).
+    Invoca el modelo de lenguaje mediante LangChain (LCEL).
+    Usa ChatGoogleGenerativeAI para modelos Gemini y ChatOpenAI para modelos OpenAI/ChatGPT.
     Devuelve el texto generado como string.
     Lanza RuntimeError si la llamada falla o no devuelve contenido.
     """
-    llm = ChatOpenAI(
-        model=OPENAI_MODEL,
-        api_key=OPENAIAPIKEY,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
+    if _is_gemini_model(OPENAI_MODEL):
+        llm = ChatGoogleGenerativeAI(
+            model=OPENAI_MODEL,
+            google_api_key=GEMINI_API_KEY,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+        )
+    else:
+        llm = ChatOpenAI(
+            model=OPENAI_MODEL,
+            api_key=OPENAIAPIKEY,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", system_msg),
         ("human", "{user_prompt}"),
@@ -738,10 +756,10 @@ def _generate_with_langchain(
         raise RuntimeError("LangChain no devolvió contenido.")
     return result
 
-def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> Tuple[str, str, str, List[str]]:
+def generate_article_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> Tuple[str, str, str, List[str]]:
     """
-    Genera el artículo usando LangChain (ChatOpenAI). Devuelve (title, summary, body, keywords).
-    Usa el SDK de OpenAI directamente como fallback si LangChain falla.
+    Genera el artículo usando LangChain (ChatOpenAI o ChatGoogleGenerativeAI según el modelo).
+    Para modelos OpenAI/ChatGPT usa el SDK de OpenAI directamente como fallback si LangChain falla.
     Incluye reintentos con back-off exponencial para errores transitorios.
     """
     user_prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
@@ -754,17 +772,17 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
             GENERATION_SYSTEM_MSG,
             user_prompt,
             max_tokens=OPENAI_MAX_ARTICLE_TOKENS,
-            temperature=0.7,
+            temperature=AI_TEMPERATURE_ARTICLE,
         )
 
     try:
         raw_text = _retry_with_backoff(_call_langchain_article)
     except Exception:
-        logger.info("LangChain no disponible para artículo; usando OpenAI SDK como fallback.")
+        logger.info("LangChain no disponible para artículo; usando SDK como fallback.")
         raw_text = None
 
-    # 2) Fallback: OpenAI SDK Chat Completions — con reintentos
-    if not raw_text:
+    # 2) Fallback: OpenAI SDK Chat Completions — solo para modelos OpenAI/ChatGPT
+    if not raw_text and not _is_gemini_model(OPENAI_MODEL) and client_ai is not None:
         def _call_chat():
             chat = client_ai.chat.completions.create(
                 model=OPENAI_MODEL,
@@ -772,7 +790,7 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
                     {"role": "system", "content": GENERATION_SYSTEM_MSG},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,
+                temperature=AI_TEMPERATURE_ARTICLE,
                 max_tokens=OPENAI_MAX_ARTICLE_TOKENS,
             )
             return chat.choices[0].message.content
@@ -783,7 +801,7 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
             raise RuntimeError(f"Fallo llamando a OpenAI: {e}")
 
     if not raw_text:
-        raise RuntimeError("OpenAI no devolvió contenido.")
+        raise RuntimeError("El modelo no devolvió contenido.")
 
     json_text = _extract_json_block(raw_text)
     data = _safe_json_loads(json_text)
@@ -793,7 +811,7 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
     body = str(data.get("body", "")).strip()
 
     if not title or not body:
-        raise ValueError("La respuesta de OpenAI no contiene 'title' y/o 'body'.")
+        raise ValueError("La respuesta del modelo no contiene 'title' y/o 'body'.")
 
     # Asegura <h1> acorde al título si falta
     if "<h1" not in body.lower():
@@ -808,10 +826,10 @@ def generate_article_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: s
 
     return title, summary, body, keywords
 
-def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
+def generate_title_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
     """
-    Genera únicamente el título del artículo usando LangChain (ChatOpenAI).
-    Usa el SDK de OpenAI directamente como fallback si LangChain falla.
+    Genera únicamente el título del artículo usando LangChain (ChatOpenAI o ChatGoogleGenerativeAI).
+    Para modelos OpenAI/ChatGPT usa el SDK de OpenAI directamente como fallback si LangChain falla.
     Mucho más económico que regenerar el artículo completo en cada reintento.
     """
     user_prompt = build_title_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
@@ -823,17 +841,17 @@ def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str
             TITLE_SYSTEM_MSG,
             user_prompt,
             max_tokens=OPENAI_MAX_TITLE_TOKENS,
-            temperature=0.9,
+            temperature=AI_TEMPERATURE_TITLE,
         )
 
     try:
         raw_text = _retry_with_backoff(_call_langchain_title)
     except Exception:
-        logger.info("LangChain no disponible para título; usando OpenAI SDK como fallback.")
+        logger.info("LangChain no disponible para título; usando SDK como fallback.")
         raw_text = None
 
-    # 2) Fallback: OpenAI SDK Chat Completions — con reintentos
-    if not raw_text:
+    # 2) Fallback: OpenAI SDK Chat Completions — solo para modelos OpenAI/ChatGPT
+    if not raw_text and not _is_gemini_model(OPENAI_MODEL) and client_ai is not None:
         def _call_chat():
             chat = client_ai.chat.completions.create(
                 model=OPENAI_MODEL,
@@ -841,7 +859,7 @@ def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str
                     {"role": "system", "content": TITLE_SYSTEM_MSG},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.9,
+                temperature=AI_TEMPERATURE_TITLE,
                 max_tokens=OPENAI_MAX_TITLE_TOKENS,
             )
             return chat.choices[0].message.content
@@ -852,7 +870,7 @@ def generate_title_with_ai(client_ai: OpenAI, parent_name: str, subcat_name: str
             raise RuntimeError(f"Fallo generando título con OpenAI: {e}")
 
     if not raw_text:
-        raise RuntimeError("OpenAI no devolvió contenido para el título.")
+        raise RuntimeError("El modelo no devolvió contenido para el título.")
 
     return raw_text.strip().strip("\"'").strip()[:META_TITLE_MAX_LENGTH]
 
@@ -999,15 +1017,20 @@ def main():
     notify("Inicio de proceso", "Comenzando ejecución de publicación automática.", level="info", always_email=True)
 
     # Validaciones de entorno mínimas
-    _required_env = {
-        "OPENAIAPIKEY": OPENAIAPIKEY,
-        "MONGODB_URI":  MONGODB_URI,
-        "DB_NAME":      DB_NAME,
+    # Determinar proveedor de IA según el modelo configurado
+    using_gemini = _is_gemini_model(OPENAI_MODEL)
+    _required_env: Dict[str, Optional[str]] = {
+        "MONGODB_URI":   MONGODB_URI,
+        "DB_NAME":       DB_NAME,
         "ARTICLES_COLL": ARTICLES_COLL,
         "USERS_COLL":    USERS_COLL,
         "CATEGORY_COLL": CATEGORY_COLL,
         "TAGS_COLL":     TAGS_COLL,
     }
+    if using_gemini:
+        _required_env["GEMINI_API_KEY"] = GEMINI_API_KEY
+    else:
+        _required_env["OPENAIAPIKEY"] = OPENAIAPIKEY
     missing = [k for k, v in _required_env.items() if not v]
 
     if missing:
@@ -1092,13 +1115,17 @@ def main():
     logger.info("Cobertura pre-cargada — tags con artículo: %d, categorías con artículo: %d",
                 len(published_tag_ids), len(published_cat_ids))
 
-    # Cliente OpenAI
-    try:
-        client_ai = OpenAI(api_key=OPENAIAPIKEY)
-        notify("OpenAI listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
-    except Exception as e:
-        notify("Error inicializando OpenAI", str(e), level="error", always_email=True)
-        sys.exit(1)
+    # Cliente de IA (OpenAI SDK — solo necesario para modelos ChatGPT como fallback)
+    client_ai: Optional[OpenAI] = None
+    if not using_gemini:
+        try:
+            client_ai = OpenAI(api_key=OPENAIAPIKEY)
+            notify("OpenAI listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
+        except Exception as e:
+            notify("Error inicializando OpenAI", str(e), level="error", always_email=True)
+            sys.exit(1)
+    else:
+        notify("Gemini listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
 
     # ===== Selección ESTRICTA (usa conjuntos pre-cargados) =====
     parent, subcat, tag = pick_fresh_target_strict(

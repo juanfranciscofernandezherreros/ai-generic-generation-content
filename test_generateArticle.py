@@ -26,6 +26,7 @@ from generateArticle import (
     _safe_json_loads,
     _language_name,
     _generate_with_langchain,
+    _is_gemini_model,
     generate_article_with_ai,
     generate_title_with_ai,
     SIMILARITY_THRESHOLD_DEFAULT,
@@ -39,6 +40,8 @@ from generateArticle import (
     OPENAI_MAX_ARTICLE_TOKENS,
     OPENAI_MAX_TITLE_TOKENS,
     ARTICLE_LANGUAGE,
+    AI_TEMPERATURE_ARTICLE,
+    AI_TEMPERATURE_TITLE,
 )
 
 
@@ -850,3 +853,128 @@ class TestGenerateTitleWithAILangchain:
         mock_client.chat.completions.create.side_effect = RuntimeError("SDK also failed")
         with pytest.raises(RuntimeError):
             generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
+
+
+# ---- _is_gemini_model ----
+class TestIsGeminiModel:
+    """Tests for the _is_gemini_model provider-detection helper."""
+
+    def test_gemini_flash_detected(self):
+        assert _is_gemini_model("gemini-1.5-flash") is True
+
+    def test_gemini_pro_detected(self):
+        assert _is_gemini_model("gemini-1.5-pro") is True
+
+    def test_gemini_2_detected(self):
+        assert _is_gemini_model("gemini-2.0-flash") is True
+
+    def test_gpt_not_gemini(self):
+        assert _is_gemini_model("gpt-4o") is False
+
+    def test_gpt_turbo_not_gemini(self):
+        assert _is_gemini_model("gpt-4-turbo") is False
+
+    def test_gpt_35_not_gemini(self):
+        assert _is_gemini_model("gpt-3.5-turbo") is False
+
+    def test_case_insensitive(self):
+        assert _is_gemini_model("GEMINI-1.5-PRO") is True
+
+
+# ---- _generate_with_langchain with Gemini ----
+class TestGenerateWithLangchainGemini:
+    """Tests for _generate_with_langchain when a Gemini model is configured."""
+
+    @patch("generateArticle.ChatGoogleGenerativeAI")
+    @patch("generateArticle.StrOutputParser")
+    @patch("generateArticle.ChatPromptTemplate")
+    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    def test_uses_google_llm_for_gemini_model(self, mock_template, mock_parser, mock_google_llm):
+        """ChatGoogleGenerativeAI should be used when the model is a Gemini model."""
+        fake_chain = MagicMock()
+        fake_chain.invoke.return_value = "Gemini response"
+        mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
+            __or__=MagicMock(return_value=fake_chain)
+        ))
+        result = _generate_with_langchain("system", "user prompt", max_tokens=100)
+        mock_google_llm.assert_called_once()
+        assert result == "Gemini response"
+
+    @patch("generateArticle.ChatOpenAI")
+    @patch("generateArticle.StrOutputParser")
+    @patch("generateArticle.ChatPromptTemplate")
+    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    def test_does_not_use_openai_llm_for_gemini_model(self, mock_template, mock_parser, mock_openai_llm):
+        """ChatOpenAI should NOT be instantiated when the model is a Gemini model."""
+        with patch("generateArticle.ChatGoogleGenerativeAI") as mock_google_llm:
+            fake_chain = MagicMock()
+            fake_chain.invoke.return_value = "Gemini response"
+            mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
+                __or__=MagicMock(return_value=fake_chain)
+            ))
+            _generate_with_langchain("system", "user prompt", max_tokens=100)
+        mock_openai_llm.assert_not_called()
+
+    @patch("generateArticle.ChatGoogleGenerativeAI")
+    @patch("generateArticle.StrOutputParser")
+    @patch("generateArticle.ChatPromptTemplate")
+    @patch("generateArticle.OPENAI_MODEL", "gemini-2.0-flash")
+    def test_gemini_llm_receives_max_output_tokens(self, mock_template, mock_parser, mock_google_llm):
+        """ChatGoogleGenerativeAI should receive max_output_tokens (not max_tokens)."""
+        mock_llm_instance = MagicMock()
+        mock_google_llm.return_value = mock_llm_instance
+        fake_chain = MagicMock()
+        fake_chain.invoke.return_value = "content"
+        mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
+            __or__=MagicMock(return_value=fake_chain)
+        ))
+        _generate_with_langchain("sys", "user", max_tokens=256, temperature=0.5)
+        call_kwargs = mock_google_llm.call_args[1]
+        assert call_kwargs["max_output_tokens"] == 256
+        assert call_kwargs["temperature"] == 0.5
+
+
+# ---- AI_TEMPERATURE_ARTICLE and AI_TEMPERATURE_TITLE constants ----
+class TestTemperatureConstants:
+    """Tests that configurable temperature constants are used in generation calls."""
+
+    @patch("generateArticle._generate_with_langchain", return_value='{"title":"T","summary":"S","body":"<h1>T</h1>","keywords":[]}')
+    @patch("generateArticle.AI_TEMPERATURE_ARTICLE", 0.3)
+    def test_article_uses_ai_temperature_article(self, mock_lc):
+        """generate_article_with_ai should pass AI_TEMPERATURE_ARTICLE to _generate_with_langchain."""
+        mock_client = MagicMock()
+        generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
+        _, call_kwargs = mock_lc.call_args
+        assert call_kwargs["temperature"] == 0.3
+
+    @patch("generateArticle._generate_with_langchain", return_value="Título generado")
+    @patch("generateArticle.AI_TEMPERATURE_TITLE", 0.2)
+    def test_title_uses_ai_temperature_title(self, mock_lc):
+        """generate_title_with_ai should pass AI_TEMPERATURE_TITLE to _generate_with_langchain."""
+        mock_client = MagicMock()
+        generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
+        _, call_kwargs = mock_lc.call_args
+        assert call_kwargs["temperature"] == 0.2
+
+
+# ---- Gemini: no OpenAI SDK fallback ----
+class TestGeminiNoOpenAIFallback:
+    """When a Gemini model is configured, the OpenAI SDK fallback must not be called."""
+
+    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    def test_article_raises_without_openai_fallback_for_gemini(self, mock_lc):
+        """For Gemini models, RuntimeError is raised when LangChain fails (no OpenAI SDK fallback)."""
+        mock_client = MagicMock()
+        with pytest.raises(RuntimeError):
+            generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
+        mock_client.chat.completions.create.assert_not_called()
+
+    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    def test_title_raises_without_openai_fallback_for_gemini(self, mock_lc):
+        """For Gemini models, RuntimeError is raised when LangChain fails (no OpenAI SDK fallback)."""
+        mock_client = MagicMock()
+        with pytest.raises(RuntimeError):
+            generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
+        mock_client.chat.completions.create.assert_not_called()
