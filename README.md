@@ -1,6 +1,6 @@
 # Publicación automática semanal con IA — Optimizado para SEO
 
-Sistema de generación y publicación automática de artículos técnicos con inteligencia artificial (OpenAI), optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
+Sistema de generación y publicación automática de artículos técnicos con inteligencia artificial (OpenAI / Google Gemini), optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
 
 ---
 
@@ -37,7 +37,7 @@ Sistema de generación y publicación automática de artículos técnicos con in
 | **Python** | 3.10+ | Ejecutar el script |
 | **Docker** y **Docker Compose** | Docker 20+ | Levantar MongoDB local (opcional) |
 | **Cuenta MongoDB Atlas** | — | Cluster en la nube (recomendado) |
-| **Clave de OpenAI** | — | Generar artículos con IA |
+| **Clave de OpenAI** o **Google Gemini** | — | Generar artículos con IA (al menos una) |
 
 ### 1. Clonar el repositorio
 
@@ -91,10 +91,15 @@ Abre `.env` con tu editor y rellena, como mínimo:
 | Variable | Qué poner |
 |---|---|
 | `MONGODB_URI` | URI de Atlas: `mongodb+srv://ex_dbuser:<db_password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0` (sustituye `<db_password>`) |
-| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys) |
+| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys). Requerida si `OPENAI_MODEL` es un modelo OpenAI. |
+| `GEMINI_API_KEY` | Tu clave de API de Google Gemini. Requerida si `OPENAI_MODEL` es un modelo Gemini (p. ej. `gemini-2.0-flash`). |
+| `OPENAI_MODEL` | Modelo de IA a usar. Ejemplos OpenAI: `gpt-4o`, `gpt-3.5-turbo`. Ejemplos Gemini: `gemini-2.0-flash`, `gemini-1.5-pro`. Por defecto: `gpt-4o`. |
 | `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP). Si usas Gmail, [crea una contraseña de aplicación aquí](https://myaccount.google.com/apppasswords) |
 | `AUTHOR_USERNAME` | Nombre del usuario autor en tu base de datos |
 | `SITE` | URL de tu web (p. ej. `https://tusitio.com`) — **importante para SEO** (URLs canónicas y datos estructurados) |
+| `ARTICLE_LANGUAGE` | Código ISO 639-1 del idioma de los artículos (p. ej. `es`, `en`, `fr`). Por defecto: `es`. |
+| `AI_TEMPERATURE_ARTICLE` | Temperatura de generación del artículo (0.0–1.0). Por defecto: `0.7`. |
+| `AI_TEMPERATURE_TITLE` | Temperatura de generación del título (0.0–1.0). Por defecto: `0.9`. |
 
 > **Nota:** Si usas el `docker-compose.yml` incluido para MongoDB local, cambia `MONGODB_URI` a `mongodb://admin:admin1234@localhost:27017/blogdb?authSource=admin`.
 
@@ -163,7 +168,7 @@ El script:
 1. Comprueba la configuración.
 2. Se conecta a MongoDB.
 3. Busca un tag sin artículo publicado (regla estricta de cobertura).
-4. Genera el artículo con OpenAI (optimizado para SEO).
+4. Genera el artículo con IA (OpenAI o Google Gemini, optimizado para SEO).
 5. Genera metadatos SEO: `metaTitle`, `metaDescription`, `canonicalUrl`, datos estructurados JSON-LD y Open Graph.
 6. Lo guarda en la base de datos y te notifica por correo.
 
@@ -219,6 +224,7 @@ docker run --rm \
   -e ARTICLES_COLL=articles \
   -e OPENAIAPIKEY="sk-XXXXXXXXXXXXXXXXXXXX" \
   -e OPENAI_MODEL=gpt-4o \
+  -e GEMINI_API_KEY="AIzaSy-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" \
   -e SITE="https://tusitio.com" \
   -e AUTHOR_USERNAME=adminUser \
   -e SMTP_HOST=smtp.gmail.com \
@@ -230,6 +236,9 @@ docker run --rm \
   -e NOTIFY_VERBOSE=true \
   -e LIMIT_PUBLICATION=true \
   -e SEND_PROMPT_EMAIL=false \
+  -e ARTICLE_LANGUAGE=es \
+  -e AI_TEMPERATURE_ARTICLE=0.7 \
+  -e AI_TEMPERATURE_TITLE=0.9 \
   article-generator:latest
 ```
 
@@ -289,7 +298,8 @@ Codifica cada valor sensible en base64 y rellena `k8s/secret.yaml` (o crea `k8s/
 ```bash
 # Generar los valores codificados
 echo -n "mongodb+srv://..." | base64
-echo -n "sk-XXXX"          | base64
+echo -n "sk-XXXX"          | base64  # OPENAIAPIKEY (OpenAI)
+echo -n "AIzaSy-XXXX"      | base64  # GEMINI_API_KEY (Google Gemini, si aplica)
 echo -n "correo@gmail.com" | base64
 echo -n "contraseña_app"   | base64
 ```
@@ -412,6 +422,7 @@ Cloud Run Jobs es la opción nativa de Google Cloud para ejecutar tareas en cont
 # Crear cada secreto con el valor real (sin salto de línea final)
 echo -n "mongodb+srv://..." | gcloud secrets create MONGODB_URI  --data-file=- --project=<PROJECT_ID>
 echo -n "sk-XXXX"           | gcloud secrets create OPENAIAPIKEY --data-file=- --project=<PROJECT_ID>
+echo -n "AIzaSy-XXXX"       | gcloud secrets create GEMINI_API_KEY --data-file=- --project=<PROJECT_ID>
 echo -n "correo@gmail.com"  | gcloud secrets create SMTP_USER    --data-file=- --project=<PROJECT_ID>
 echo -n "contraseña_app"    | gcloud secrets create SMTP_PASS    --data-file=- --project=<PROJECT_ID>
 ```
@@ -497,7 +508,7 @@ flowchart TD
     B["🐍 generateArticle.py\n(Script principal)"] --> C["🔍 Validación\n(.env + conexión)"]
     C --> D["🗄️ MongoDB\n(Categorías, Tags, Artículos)"]
     D -->|"Consulta tags sin artículo"| E["🎯 Selección de tema\n(pick_fresh_target_strict)"]
-    E --> F["🤖 OpenAI API\n(GPT — generación SEO)"]
+    E --> F["🤖 IA API\n(OpenAI GPT / Google Gemini\n— generación SEO)"]
     F -->|"Título + Body + Keywords + FAQ"| G["📝 Post-procesado SEO\n(metaTitle, canonicalUrl,\nJSON-LD, Open Graph)"]
     G --> H["💾 MongoDB\n(insert artículo publicado)"]
     H --> I["📧 Notificación email\n(SMTP)"]
@@ -524,7 +535,7 @@ generateArticle.py
   │         ↓                   │
   │    Selección de tema        │
   │         ↓                   │
-  │    OpenAI API (genera)      │
+  │    IA API (OpenAI / Gemini) │
   │         ↓                   │
   │    SEO post-procesado       │
   │         ↓                   │
@@ -617,7 +628,7 @@ Antes de poder publicar artículos, el script necesita algunos datos y accesos:
 | Tipo de dato | Para qué sirve |
 |---------------|----------------|
 | **Base de datos MongoDB** | Donde están las categorías, etiquetas (tags), usuarios y artículos. Puede ser un cluster Atlas o una instancia local. |
-| **Clave de OpenAI** | Es la llave que permite que la IA escriba los artículos. |
+| **Clave de API de IA** | `OPENAIAPIKEY` para OpenAI (GPT) o `GEMINI_API_KEY` para Google Gemini. Al menos una es necesaria según el modelo elegido en `OPENAI_MODEL`. |
 | **Servidor de correo (SMTP)** | Para poder enviarte emails con las notificaciones. |
 | **Usuario autor** | El nombre del usuario (por ejemplo "adminUser") con el que se publicarán los artículos. |
 | **URL del sitio (`SITE`)** | Necesaria para generar URLs canónicas y datos estructurados correctos. |
@@ -698,7 +709,7 @@ No pasa nada. El script está preparado para publicar artículos también **aunq
 
 ### 1) Empieza y revisa la configuración
 Cuando lo ejecutas, lo primero que hace es comprobar que están todas las claves y accesos necesarios:
-- OpenAI
+- OpenAI o Google Gemini (según `OPENAI_MODEL`)
 - MongoDB
 - SMTP (correo electrónico)
 - Colecciones (categorías, tags, usuarios y artículos)
@@ -992,7 +1003,7 @@ Durante la ejecución, el script puede mandarte distintos tipos de mensajes por 
 ## 🔒 Seguridad y privacidad
 - Las contraseñas, claves de API y datos sensibles **no están dentro del código**.
   Se guardan en el archivo `.env`, que **no debe compartirse**.
-- No envía datos a ningún sitio externo salvo a OpenAI (para generar el texto) y tu servidor de correo (para notificarte).
+- No envía datos a ningún sitio externo salvo al proveedor de IA configurado (OpenAI o Google Gemini, para generar el texto) y tu servidor de correo (para notificarte).
 
 ---
 

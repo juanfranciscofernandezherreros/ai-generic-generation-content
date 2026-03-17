@@ -77,6 +77,12 @@ spec:
                   value: "true"
                 - name: SEND_PROMPT_EMAIL
                   value: "false"
+                - name: ARTICLE_LANGUAGE
+                  value: "es"
+                - name: AI_TEMPERATURE_ARTICLE
+                  value: "0.7"
+                - name: AI_TEMPERATURE_TITLE
+                  value: "0.9"
                 # ── Variables sensibles desde Secret Manager ─────────────────
                 # Crea cada secreto con:
                 #   echo -n "valor" | gcloud secrets create NOMBRE --data-file=-
@@ -89,6 +95,12 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       name: OPENAIAPIKEY
+                      key: latest
+                # Solo necesario si usas Google Gemini como proveedor de IA
+                - name: GEMINI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: GEMINI_API_KEY
                       key: latest
                 - name: SMTP_USER
                   valueFrom:
