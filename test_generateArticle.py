@@ -1161,7 +1161,8 @@ class TestGenerateAndSaveArticle:
                 mock_client, "Spring Böot", "Categoría", "Subcategoría",
                 output_path=path,
             )
-            raw = open(path, encoding="utf-8").read()
+            with open(path, encoding="utf-8") as f:
+                raw = f.read()
             # ensure_ascii=False means accented chars should appear literally
             assert "Subcategor" in raw
         finally:
