@@ -152,6 +152,17 @@ def html_escape(s: str) -> str:
          .replace(">", "&gt;")
     )
 
+def _replace_h1(body: str, title: str) -> str:
+    """Reemplaza el primer <h1> del cuerpo con el título dado, o lo antepone si no existe."""
+    escaped_title = html_escape(title)
+    new_body, replacements = re.subn(
+        r'<h1[^>]*>.*?</h1>', f'<h1>{escaped_title}</h1>',
+        body, count=1, flags=re.DOTALL | re.IGNORECASE,
+    )
+    if not replacements:
+        new_body = f'<h1>{escaped_title}</h1>\n' + body
+    return new_body
+
 def extract_plain_text(html: str) -> str:
     """Elimina todas las etiquetas HTML y devuelve el texto plano sin espacios múltiples."""
     if not html:
@@ -550,11 +561,7 @@ def generate_and_save_article(
     if title:
         t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
         # Reemplazar el título generado por el proporcionado
-        escaped_title = html_escape(title)
-        new_b, replacements = re.subn(r'<h1[^>]*>.*?</h1>', f'<h1>{escaped_title}</h1>', b, count=1, flags=re.DOTALL | re.IGNORECASE)
-        if not replacements:
-            new_b = f'<h1>{escaped_title}</h1>\n' + b
-        title, summary, body, keywords = title, s, new_b, kw
+        title, summary, body, keywords = title, s, _replace_h1(b, title), kw
     else:
         max_attempts = MAX_TITLE_RETRIES
         title = summary = body = None
@@ -572,13 +579,7 @@ def generate_and_save_article(
             for attempt in range(2, max_attempts + 1):
                 new_t = generate_title_with_ai(client_ai, parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
                 if not is_too_similar(new_t, avoid_titles, threshold=SIMILARITY_THRESHOLD_STRICT):
-                    # Actualiza el <h1> del cuerpo para que coincida con el nuevo título
-                    escaped_title = html_escape(new_t)
-                    new_b, replacements = re.subn(r'<h1[^>]*>.*?</h1>', f'<h1>{escaped_title}</h1>', b, count=1, flags=re.DOTALL | re.IGNORECASE)
-                    if not replacements:
-                        # El cuerpo no tenía <h1>; lo anteponemos
-                        new_b = f'<h1>{escaped_title}</h1>\n' + b
-                    title, summary, body, keywords = new_t, s, new_b, kw
+                    title, summary, body, keywords = new_t, s, _replace_h1(b, new_t), kw
                     break
                 notify("Título similar detectado", f"Intento {attempt}/{max_attempts}: '{new_t}'. Reintentando...", level="warning", always_email=True)
                 avoid_titles.append(new_t)
