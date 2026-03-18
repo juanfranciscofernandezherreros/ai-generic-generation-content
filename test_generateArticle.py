@@ -30,6 +30,7 @@ from generateArticle import (
     _language_name,
     _generate_with_langchain,
     _is_gemini_model,
+    _is_ollama_provider,
     LLMChain,
     generate_article_with_ai,
     generate_title_with_ai,
@@ -43,6 +44,7 @@ from generateArticle import (
     TITLE_SYSTEM_MSG,
     OPENAI_MAX_ARTICLE_TOKENS,
     OPENAI_MAX_TITLE_TOKENS,
+    OLLAMA_PLACEHOLDER_API_KEY,
     ARTICLE_LANGUAGE,
     AI_TEMPERATURE_ARTICLE,
     AI_TEMPERATURE_TITLE,
@@ -937,6 +939,150 @@ class TestGenerateWithLangchainGemini:
         assert call_kwargs["max_output_tokens"] == 256
         assert call_kwargs["temperature"] == 0.5
 
+
+
+# ---- _is_ollama_provider ----
+class TestIsOllamaProvider:
+    """Tests for the _is_ollama_provider helper."""
+
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    def test_true_when_url_set(self):
+        assert _is_ollama_provider() is True
+
+    @patch("generateArticle.OLLAMA_BASE_URL", None)
+    def test_false_when_url_none(self):
+        assert _is_ollama_provider() is False
+
+    @patch("generateArticle.OLLAMA_BASE_URL", "")
+    def test_false_when_url_empty(self):
+        assert _is_ollama_provider() is False
+
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://192.168.1.50:11434/v1")
+    def test_true_with_custom_host(self):
+        assert _is_ollama_provider() is True
+
+
+# ---- _generate_with_langchain with Ollama ----
+class TestGenerateWithLangchainOllama:
+    """Tests for _generate_with_langchain when Ollama is configured."""
+
+    @patch("generateArticle.ChatOpenAI")
+    @patch("generateArticle.StrOutputParser")
+    @patch("generateArticle.ChatPromptTemplate")
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    def test_uses_chat_openai_with_base_url_for_ollama(self, mock_template, mock_parser, mock_llm):
+        """ChatOpenAI should be constructed with base_url when Ollama is configured."""
+        mock_llm_instance = MagicMock()
+        mock_llm.return_value = mock_llm_instance
+        fake_chain = MagicMock()
+        fake_chain.invoke.return_value = "Ollama response"
+        mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
+            __or__=MagicMock(return_value=fake_chain)
+        ))
+        result = _generate_with_langchain("system", "user prompt", max_tokens=100)
+        mock_llm.assert_called_once()
+        call_kwargs = mock_llm.call_args[1]
+        assert call_kwargs["base_url"] == "http://localhost:11434/v1"
+        assert call_kwargs["api_key"] == OLLAMA_PLACEHOLDER_API_KEY
+        assert result == "Ollama response"
+
+    @patch("generateArticle.ChatOpenAI")
+    @patch("generateArticle.StrOutputParser")
+    @patch("generateArticle.ChatPromptTemplate")
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAI_MODEL", "mistral")
+    def test_ollama_llm_receives_max_tokens_and_temperature(self, mock_template, mock_parser, mock_llm):
+        """ChatOpenAI for Ollama should receive max_tokens and temperature."""
+        mock_llm_instance = MagicMock()
+        mock_llm.return_value = mock_llm_instance
+        fake_chain = MagicMock()
+        fake_chain.invoke.return_value = "content"
+        mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
+            __or__=MagicMock(return_value=fake_chain)
+        ))
+        _generate_with_langchain("sys", "user", max_tokens=512, temperature=0.5)
+        call_kwargs = mock_llm.call_args[1]
+        assert call_kwargs["max_tokens"] == 512
+        assert call_kwargs["temperature"] == 0.5
+
+    @patch("generateArticle.ChatGoogleGenerativeAI")
+    @patch("generateArticle.ChatOpenAI")
+    @patch("generateArticle.StrOutputParser")
+    @patch("generateArticle.ChatPromptTemplate")
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    def test_ollama_does_not_use_google_llm(self, mock_template, mock_parser, mock_openai_llm, mock_google_llm):
+        """ChatGoogleGenerativeAI should NOT be used when Ollama is configured."""
+        fake_chain = MagicMock()
+        fake_chain.invoke.return_value = "Ollama response"
+        mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
+            __or__=MagicMock(return_value=fake_chain)
+        ))
+        _generate_with_langchain("system", "user prompt", max_tokens=100)
+        mock_google_llm.assert_not_called()
+
+
+# ---- Ollama: CLI main() ----
+class TestMainCliOllama:
+    """Tests for the main() CLI when Ollama is configured."""
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAIAPIKEY", "")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    def test_main_does_not_require_api_key_with_ollama(self, mock_openai_cls, mock_gen):
+        """main() should NOT exit when OPENAIAPIKEY is empty but OLLAMA_BASE_URL is set."""
+        import sys
+        from generateArticle import main
+        with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
+            main()
+        mock_gen.assert_called_once()
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAIAPIKEY", "")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    def test_main_initializes_openai_client_with_base_url(self, mock_openai_cls, mock_gen):
+        """main() should create the OpenAI client with base_url pointing to Ollama."""
+        import sys
+        from generateArticle import main
+        with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
+            main()
+        mock_openai_cls.assert_called_once_with(base_url="http://localhost:11434/v1", api_key=OLLAMA_PLACEHOLDER_API_KEY)
+
+
+# ---- Ollama: no Gemini interference ----
+class TestOllamaNoGeminiInterference:
+    """When Ollama is configured with a non-Gemini model, Gemini paths should not activate."""
+
+    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    def test_article_uses_sdk_fallback_for_ollama(self, mock_lc):
+        """For Ollama, OpenAI SDK fallback should be used when LangChain fails."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=_VALID_ARTICLE_JSON))]
+        )
+        title, _, _, _ = generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
+        assert title == "Cómo usar Spring Boot"
+        mock_client.chat.completions.create.assert_called_once()
+
+    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    def test_title_uses_sdk_fallback_for_ollama(self, mock_lc):
+        """For Ollama, OpenAI SDK fallback should be used when LangChain fails."""
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content="Título de Ollama"))]
+        )
+        title = generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
+        assert "Título de Ollama" in title
+        mock_client.chat.completions.create.assert_called_once()
 
 
 # ---- LLMChain class ----

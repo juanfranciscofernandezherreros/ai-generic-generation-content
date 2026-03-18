@@ -49,7 +49,8 @@ El script carga su configuración desde un fichero `.env` en el mismo directorio
 |---|---|---|
 | `OPENAIAPIKEY` | ✅ (si modelo OpenAI) | Clave de API de OpenAI (`sk-...`) |
 | `GEMINI_API_KEY` | ✅ (si modelo Gemini) | Clave de API de Google Gemini |
-| `OPENAI_MODEL` | ❌ | Modelo a usar (por defecto `gpt-4o`). Si empieza por `gemini-`, usa Gemini |
+| `OLLAMA_BASE_URL` | ✅ (si Ollama) | URL del servidor Ollama local (ej. `http://localhost:11434/v1`). Cuando se establece, no se requiere `OPENAIAPIKEY` |
+| `OPENAI_MODEL` | ❌ | Modelo a usar (por defecto `gpt-4o`). Si empieza por `gemini-`, usa Gemini. Si `OLLAMA_BASE_URL` está definida, usa Ollama |
 | `AUTHOR_USERNAME` | ❌ | Nombre del autor de los artículos (por defecto `adminUser`) |
 | `SITE` | ❌ | URL base de la web (ej. `https://tusitio.com`). Necesaria para URLs canónicas |
 | `ARTICLE_LANGUAGE` | ❌ | Código ISO 639-1 del idioma (por defecto `es`) |
@@ -331,16 +332,19 @@ La estructura de tres niveles no solo organiza el contenido, sino que refuerza e
 
 ---
 
-## 8. Integración con IA (OpenAI y Google Gemini)
+## 8. Integración con IA (OpenAI, Google Gemini y Ollama)
 
 ### Proveedor de IA
 
-El script soporta dos proveedores de IA según el valor de `OPENAI_MODEL`:
+El script soporta tres proveedores de IA según la configuración:
 
 | Modelo | Proveedor | Variable de API |
 |---|---|---|
 | `gpt-4o`, `gpt-4-turbo`, `gpt-3.5-turbo`, etc. | OpenAI | `OPENAIAPIKEY` |
 | `gemini-1.5-pro`, `gemini-2.0-flash`, etc. | Google Gemini | `GEMINI_API_KEY` |
+| `llama3`, `mistral`, `codellama`, etc. | Ollama (local) | `OLLAMA_BASE_URL` |
+
+> **Ollama**: Cuando `OLLAMA_BASE_URL` está definida (p. ej. `http://localhost:11434/v1`), el script usa el servidor local de Ollama a través de la API compatible con OpenAI. No requiere clave de API.
 
 ### System message (contexto del modelo)
 
@@ -382,15 +386,16 @@ El script intenta en este orden:
 
 ```
 1. LangChain LCEL chain:
-   ChatOpenAI / ChatGoogleGenerativeAI
+   ChatOpenAI / ChatGoogleGenerativeAI / ChatOpenAI(base_url=Ollama)
    + ChatPromptTemplate
    + StrOutputParser
    → _generate_with_langchain()
    Si falla (error de red, timeout, etc.) →
 
-2. OpenAI SDK directo (solo para modelos OpenAI):
+2. OpenAI SDK directo (para modelos OpenAI y Ollama):
    client.chat.completions.create(model, messages)
    → Chat Completions — endpoint estándar
+   (Ollama expone una API compatible con OpenAI)
 ```
 
 Ambas rutas tienen reintentos con **back-off exponencial** para errores transitorios (`ConnectionError`, `TimeoutError`).

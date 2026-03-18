@@ -61,7 +61,8 @@ Abre `.env` con tu editor y rellena, como mínimo:
 |---|---|
 | `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys). Requerida si `OPENAI_MODEL` es un modelo OpenAI. |
 | `GEMINI_API_KEY` | Tu clave de API de Google Gemini. Requerida si `OPENAI_MODEL` es un modelo Gemini (p. ej. `gemini-2.0-flash`). |
-| `OPENAI_MODEL` | Modelo de IA a usar. Ejemplos OpenAI: `gpt-4o`, `gpt-3.5-turbo`. Ejemplos Gemini: `gemini-2.0-flash`, `gemini-1.5-pro`. Por defecto: `gpt-4o`. |
+| `OLLAMA_BASE_URL` | URL del servidor Ollama local (p. ej. `http://localhost:11434/v1`). Cuando se establece, se usa Ollama como proveedor de IA y no se requiere `OPENAIAPIKEY`. |
+| `OPENAI_MODEL` | Modelo de IA a usar. Ejemplos OpenAI: `gpt-4o`, `gpt-3.5-turbo`. Ejemplos Gemini: `gemini-2.0-flash`, `gemini-1.5-pro`. Ejemplos Ollama: `llama3`, `mistral`, `codellama`. Por defecto: `gpt-4o`. |
 | `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP). Si usas Gmail, [crea una contraseña de aplicación aquí](https://myaccount.google.com/apppasswords) |
 | `AUTHOR_USERNAME` | Nombre del autor de los artículos generados |
 | `SITE` | URL de tu web (p. ej. `https://tusitio.com`) — **importante para SEO** (URLs canónicas y datos estructurados) |
@@ -191,6 +192,38 @@ docker run --rm \
 ```bash
 # Ejecutar el generador de artículos con argumentos CLI
 docker compose run --rm app --tag "@Data" --category "Spring Boot" --subcategory "Lombok"
+```
+
+### Usar con Ollama (LLM local)
+
+Para usar un modelo local con [Ollama](https://ollama.com), instala y arranca Ollama en tu máquina y luego ejecuta:
+
+```bash
+# 1. Instalar Ollama y descargar un modelo (solo la primera vez)
+# Visita https://ollama.com para la instalación
+ollama pull llama3
+
+# 2. Ejecutar el generador con Ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1 OPENAI_MODEL=llama3 \
+  python generateArticle.py --tag "JWT Authentication" --category "Spring Boot" --subcategory "Spring Security"
+```
+
+Con Docker, usa `--network host` (Linux) o `host.docker.internal` (macOS/Windows) para acceder al servidor Ollama del host:
+
+```bash
+# Linux: --network host para acceder a localhost del host
+docker run --rm --network host \
+  -e OLLAMA_BASE_URL="http://localhost:11434/v1" \
+  -e OPENAI_MODEL=llama3 \
+  article-generator:latest \
+  --tag "JWT Authentication" --category "Spring Boot" --subcategory "Spring Security"
+
+# macOS / Windows: usar host.docker.internal
+docker run --rm \
+  -e OLLAMA_BASE_URL="http://host.docker.internal:11434/v1" \
+  -e OPENAI_MODEL=llama3 \
+  article-generator:latest \
+  --tag "JWT Authentication" --category "Spring Boot" --subcategory "Spring Security"
 ```
 
 ---

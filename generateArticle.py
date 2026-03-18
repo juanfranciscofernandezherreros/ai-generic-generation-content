@@ -31,6 +31,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 SITE            = os.getenv("SITE") or ""
 OPENAIAPIKEY    = os.getenv("OPENAIAPIKEY")
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")  # p. ej. http://localhost:11434/v1
 AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME") or "adminUser"
 OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-4o")
 
@@ -64,6 +65,7 @@ META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SE
 MAX_AVOID_TITLES_IN_PROMPT   = 5      # máx. títulos a incluir en el prompt (mantiene prompts cortos)
 OPENAI_MAX_ARTICLE_TOKENS    = 4096   # límite de tokens de salida para artículos
 OPENAI_MAX_TITLE_TOKENS      = 100    # límite de tokens de salida para títulos
+OLLAMA_PLACEHOLDER_API_KEY   = "ollama"  # clave ficticia para Ollama (no requiere autenticación)
 
 # ============ IDIOMAS ============
 # Mapa de códigos ISO 639-1 a nombres de idioma (escritos en español, para usar en los prompts)
@@ -383,6 +385,11 @@ def _is_gemini_model(model: str) -> bool:
     return model.lower().startswith("gemini")
 
 
+def _is_ollama_provider() -> bool:
+    """Devuelve True si se ha configurado OLLAMA_BASE_URL para usar un servidor Ollama local."""
+    return bool(OLLAMA_BASE_URL)
+
+
 class LLMChain:
     """
     Cadena que combina un ChatPromptTemplate con un modelo de lenguaje (LLM).
@@ -418,7 +425,8 @@ def _generate_with_langchain(
 ) -> str:
     """
     Invoca el modelo de lenguaje mediante LangChain usando LLMChain.
-    Usa ChatGoogleGenerativeAI para modelos Gemini y ChatOpenAI para modelos OpenAI/ChatGPT.
+    Usa ChatGoogleGenerativeAI para modelos Gemini, ChatOpenAI con base_url
+    para Ollama (servidor local) y ChatOpenAI estándar para modelos OpenAI/ChatGPT.
     Devuelve el texto generado como string.
     Lanza RuntimeError si la llamada falla o no devuelve contenido.
     """
@@ -427,6 +435,14 @@ def _generate_with_langchain(
             model=OPENAI_MODEL,
             google_api_key=GEMINI_API_KEY,
             max_output_tokens=max_tokens,
+            temperature=temperature,
+        )
+    elif _is_ollama_provider():
+        llm = ChatOpenAI(
+            model=OPENAI_MODEL,
+            base_url=OLLAMA_BASE_URL,
+            api_key=OLLAMA_PLACEHOLDER_API_KEY,
+            max_tokens=max_tokens,
             temperature=temperature,
         )
     else:
@@ -448,8 +464,8 @@ def _generate_with_langchain(
 
 def generate_article_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> Tuple[str, str, str, List[str]]:
     """
-    Genera el artículo usando LangChain (ChatOpenAI o ChatGoogleGenerativeAI según el modelo).
-    Para modelos OpenAI/ChatGPT usa el SDK de OpenAI directamente como fallback si LangChain falla.
+    Genera el artículo usando LangChain (ChatOpenAI, ChatGoogleGenerativeAI o Ollama según el modelo).
+    Para modelos OpenAI/ChatGPT y Ollama usa el SDK de OpenAI directamente como fallback si LangChain falla.
     Incluye reintentos con back-off exponencial para errores transitorios.
     """
     user_prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
@@ -518,8 +534,8 @@ def generate_article_with_ai(client_ai: Optional[OpenAI], parent_name: str, subc
 
 def generate_title_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
     """
-    Genera únicamente el título del artículo usando LangChain (ChatOpenAI o ChatGoogleGenerativeAI).
-    Para modelos OpenAI/ChatGPT usa el SDK de OpenAI directamente como fallback si LangChain falla.
+    Genera únicamente el título del artículo usando LangChain (ChatOpenAI, ChatGoogleGenerativeAI o Ollama).
+    Para modelos OpenAI/ChatGPT y Ollama usa el SDK de OpenAI directamente como fallback si LangChain falla.
     Mucho más económico que regenerar el artículo completo en cada reintento.
     """
     user_prompt = build_title_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
@@ -717,7 +733,10 @@ def main():
 
     # Validar que la clave de API esté disponible
     using_gemini = _is_gemini_model(OPENAI_MODEL)
-    if using_gemini:
+    using_ollama = _is_ollama_provider()
+    if using_ollama:
+        pass  # Ollama no requiere clave de API
+    elif using_gemini:
         if not GEMINI_API_KEY:
             notify("Configuración incompleta", "Falta la variable de entorno GEMINI_API_KEY.", level="error", always_email=True)
             sys.exit(1)
@@ -726,9 +745,16 @@ def main():
             notify("Configuración incompleta", "Falta la variable de entorno OPENAIAPIKEY.", level="error", always_email=True)
             sys.exit(1)
 
-    # Inicializar cliente de IA (OpenAI SDK — solo para modelos ChatGPT como fallback)
+    # Inicializar cliente de IA (OpenAI SDK — para modelos ChatGPT y Ollama como fallback)
     client_ai: Optional[OpenAI] = None
-    if not using_gemini:
+    if using_ollama:
+        try:
+            client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key=OLLAMA_PLACEHOLDER_API_KEY)
+            notify("Ollama listo", f"Modelo: {OPENAI_MODEL} — URL: {OLLAMA_BASE_URL}", level="info", always_email=True)
+        except Exception as e:
+            notify("Error inicializando Ollama", str(e), level="error", always_email=True)
+            sys.exit(1)
+    elif not using_gemini:
         try:
             client_ai = OpenAI(api_key=OPENAIAPIKEY)
             notify("OpenAI listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
