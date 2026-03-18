@@ -10,11 +10,6 @@ metadata:
   labels:
     app: article-generator
 data:
-  DB_NAME: "blogdb"
-  CATEGORY_COLL: "categories"
-  TAGS_COLL: "tags"
-  USERS_COLL: "users"
-  ARTICLES_COLL: "articles"
   OPENAI_MODEL: "gpt-4o"
   SITE: "https://tusitio.com"
   AUTHOR_USERNAME: "adminUser"

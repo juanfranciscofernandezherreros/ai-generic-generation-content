@@ -40,6 +40,19 @@ spec:
               image: article-generator:latest
               # Usa imagePullPolicy: Always si la imagen se publica en un registry
               imagePullPolicy: IfNotPresent
+              # Ajusta --tag, --category y --subcategory con el tema que deseas generar.
+              # Consulta la lista de categorías y tags en seed_data.py o en la documentación.
+              command:
+                - python
+                - generateArticle.py
+                - --tag
+                - "@Data"
+                - --category
+                - "Spring Boot"
+                - --subcategory
+                - "Lombok"
+                - --output
+                - /tmp/article.json
               envFrom:
                 - configMapRef:
                     name: article-generator-config
