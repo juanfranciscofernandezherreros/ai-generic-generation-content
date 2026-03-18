@@ -65,6 +65,7 @@ META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SE
 MAX_AVOID_TITLES_IN_PROMPT   = 5      # máx. títulos a incluir en el prompt (mantiene prompts cortos)
 OPENAI_MAX_ARTICLE_TOKENS    = 4096   # límite de tokens de salida para artículos
 OPENAI_MAX_TITLE_TOKENS      = 100    # límite de tokens de salida para títulos
+OLLAMA_PLACEHOLDER_API_KEY   = "ollama"  # clave ficticia para Ollama (no requiere autenticación)
 
 # ============ IDIOMAS ============
 # Mapa de códigos ISO 639-1 a nombres de idioma (escritos en español, para usar en los prompts)
@@ -440,7 +441,7 @@ def _generate_with_langchain(
         llm = ChatOpenAI(
             model=OPENAI_MODEL,
             base_url=OLLAMA_BASE_URL,
-            api_key="ollama",
+            api_key=OLLAMA_PLACEHOLDER_API_KEY,
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -748,7 +749,7 @@ def main():
     client_ai: Optional[OpenAI] = None
     if using_ollama:
         try:
-            client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+            client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key=OLLAMA_PLACEHOLDER_API_KEY)
             notify("Ollama listo", f"Modelo: {OPENAI_MODEL} — URL: {OLLAMA_BASE_URL}", level="info", always_email=True)
         except Exception as e:
             notify("Error inicializando Ollama", str(e), level="error", always_email=True)

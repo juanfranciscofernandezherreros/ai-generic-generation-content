@@ -44,6 +44,7 @@ from generateArticle import (
     TITLE_SYSTEM_MSG,
     OPENAI_MAX_ARTICLE_TOKENS,
     OPENAI_MAX_TITLE_TOKENS,
+    OLLAMA_PLACEHOLDER_API_KEY,
     ARTICLE_LANGUAGE,
     AI_TEMPERATURE_ARTICLE,
     AI_TEMPERATURE_TITLE,
@@ -983,7 +984,7 @@ class TestGenerateWithLangchainOllama:
         mock_llm.assert_called_once()
         call_kwargs = mock_llm.call_args[1]
         assert call_kwargs["base_url"] == "http://localhost:11434/v1"
-        assert call_kwargs["api_key"] == "ollama"
+        assert call_kwargs["api_key"] == OLLAMA_PLACEHOLDER_API_KEY
         assert result == "Ollama response"
 
     @patch("generateArticle.ChatOpenAI")
@@ -1050,7 +1051,7 @@ class TestMainCliOllama:
         from generateArticle import main
         with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
             main()
-        mock_openai_cls.assert_called_once_with(base_url="http://localhost:11434/v1", api_key="ollama")
+        mock_openai_cls.assert_called_once_with(base_url="http://localhost:11434/v1", api_key=OLLAMA_PLACEHOLDER_API_KEY)
 
 
 # ---- Ollama: no Gemini interference ----
