@@ -42,8 +42,6 @@ SMTP_PASS   = os.getenv("SMTP_PASS")
 FROM_EMAIL  = os.getenv("FROM_EMAIL") or (SMTP_USER or "")
 TO_EMAIL    = os.getenv("NOTIFY_EMAIL") or "jnfz92@gmail.com"
 NOTIFY_VERBOSE = (os.getenv("NOTIFY_VERBOSE", "true").lower() in ("1","true","yes","y"))
-# Controla si se limita a 1 artículo por semana (true) o se permite publicar siempre (false) — reservado para uso futuro
-LIMIT_PUBLICATION = (os.getenv("LIMIT_PUBLICATION", "true").lower() in ("1", "true", "yes", "y"))
 # Si es true, enviará por email el prompt de generación antes de llamar a OpenAI
 SEND_PROMPT_EMAIL = (os.getenv("SEND_PROMPT_EMAIL", "false").lower() in ("1", "true", "yes", "y"))
 # Idioma por defecto para los artículos generados (código ISO 639-1, p. ej. "es", "en", "fr")

@@ -14,11 +14,10 @@ Este documento explica en detalle la arquitectura interna, el flujo de datos y c
 6. [Funciones auxiliares (helpers)](#6-funciones-auxiliares-helpers)
 7. [Gestión de categorías, subcategorías y tags](#7-gestión-de-categorías-subcategorías-y-tags)
 8. [Integración con IA (OpenAI y Google Gemini)](#8-integración-con-ia-openai-y-google-gemini)
-9. [Control del límite semanal](#9-control-del-límite-semanal)
-10. [Sistema de notificaciones por correo](#10-sistema-de-notificaciones-por-correo)
-11. [Documento JSON exportado](#11-documento-json-exportado)
-12. [Diagrama de flujo](#12-diagrama-de-flujo)
-13. [Optimización SEO completa](#13-optimización-seo-completa)
+9. [Sistema de notificaciones por correo](#9-sistema-de-notificaciones-por-correo)
+10. [Documento JSON exportado](#10-documento-json-exportado)
+11. [Diagrama de flujo](#11-diagrama-de-flujo)
+12. [Optimización SEO completa](#12-optimización-seo-completa)
 
 ---
 
@@ -62,7 +61,6 @@ El script carga su configuración desde un fichero `.env` en el mismo directorio
 | `FROM_EMAIL` | ❌ | Dirección de envío |
 | `NOTIFY_EMAIL` | ❌ | Destinatario de las notificaciones |
 | `NOTIFY_VERBOSE` | ❌ | Si es `true` (por defecto), envía email en cada evento; si es `false`, solo en errores/avisos |
-| `LIMIT_PUBLICATION` | ❌ | Reservado para uso futuro. No afecta al comportamiento actual |
 | `SEND_PROMPT_EMAIL` | ❌ | Si es `true`, envía por email el prompt antes de llamar a la IA |
 
 ### Argumentos CLI
@@ -380,17 +378,15 @@ GENERATION_SYSTEM_MSG = (
 
 El script intenta en este orden:
 
-```
-1. LangChain LCEL chain:
-   ChatOpenAI / ChatGoogleGenerativeAI
-   + ChatPromptTemplate
-   + StrOutputParser
-   → _generate_with_langchain()
-   Si falla (error de red, timeout, etc.) →
+```mermaid
+flowchart LR
+    A["🔗 LangChain LCEL chain\nChatOpenAI / ChatGoogleGenerativeAI\n+ ChatPromptTemplate\n+ StrOutputParser"] -->|"✅ Éxito"| C["📦 Respuesta"]
+    A -. "❌ Falla\n(red, timeout)" .-> B["🔄 OpenAI SDK directo\n(solo modelos OpenAI)\nclient.chat.completions.create()"]
+    B --> C
 
-2. OpenAI SDK directo (solo para modelos OpenAI):
-   client.chat.completions.create(model, messages)
-   → Chat Completions — endpoint estándar
+    style A fill:#10b981,stroke:#059669,color:#fff
+    style B fill:#f59e0b,stroke:#d97706,color:#000
+    style C fill:#6366f1,stroke:#4f46e5,color:#fff
 ```
 
 Ambas rutas tienen reintentos con **back-off exponencial** para errores transitorios (`ConnectionError`, `TimeoutError`).
@@ -406,26 +402,7 @@ La respuesta puede llegar en distintos formatos:
 
 ---
 
-## 9. Control del límite semanal
-
-```python
-def current_week_window_utc_for_madrid(start_weekday=1):
-    tz_madrid = ZoneInfo("Europe/Madrid")
-    today = datetime.now(tz_madrid).date()
-    # Calcula el lunes de la semana actual
-    delta_days = (today.isoweekday() - start_weekday) % 7
-    start_local = datetime.combine(today - timedelta(days=delta_days), time(0,0), tzinfo=tz_madrid)
-    end_local = start_local + timedelta(days=7)
-    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
-```
-
-Esta función se usa internamente para calcular ventanas de tiempo en hora de Madrid, independientemente del huso horario del servidor.
-
-La variable `LIMIT_PUBLICATION` está reservada para uso futuro.
-
----
-
-## 10. Sistema de notificaciones por correo
+## 9. Sistema de notificaciones por correo
 
 `notify(subject, message, level, always_email)` centraliza todo el logging:
 
@@ -441,7 +418,7 @@ Los niveles disponibles son: `info`, `success`, `warning`, `error`.
 
 ---
 
-## 11. Documento JSON exportado
+## 10. Documento JSON exportado
 
 El artículo exportado al fichero JSON tiene la siguiente estructura:
 
@@ -539,142 +516,130 @@ El artículo exportado al fichero JSON tiene la siguiente estructura:
 
 ---
 
-## 12. Diagrama de flujo
+## 11. Diagrama de flujo
 
-### 12.1 Flujo principal del script
+### 11.1 Flujo principal del script
 
-```
-┌─────────────────────────────────────────┐
-│             INICIO (main)               │
-└────────────────┬────────────────────────┘
-                 │
-        ┌────────▼────────┐
-        │ Parsear args CLI │
-        │ --tag, --category│
-        │ --subcategory, ..│
-        └────────┬────────┘
-                 │
-        ┌────────▼──────────┐
-        │ ¿Clave API OK?    │──── NO ──► Email error + sys.exit(1)
-        └────────┬──────────┘
-                 │ SÍ
-        ┌────────▼──────────────────────────────────────┐
-        │ generate_and_save_article()                    │
-        │  ┌──────────────────────────────────────────┐ │
-        │  │  Fase 1: generate_article_with_ai()      │ │
-        │  │   1. build_generation_prompt()           │ │
-        │  │   2. LangChain chain (primario)          │ │
-        │  │   3. OpenAI SDK fallback (si falla)      │ │
-        │  │   4. _extract_json_block + _safe_json    │ │
-        │  │   → (title, summary, body, keywords)     │ │
-        │  │                                          │ │
-        │  │  ¿Título demasiado similar?              │ │
-        │  │   SÍ → Fase 2: generate_title_with_ai() │ │
-        │  │         (máx. 5 intentos)                │ │
-        │  │   NO → aceptar título                    │ │
-        │  └──────────────────────────────────────────┘ │
-        │  ¿Título obtenido?                             │
-        └────────┬───────────────────┬──────────────────┘
-                 │ SÍ                │ NO
-        ┌────────▼──────┐   ┌────────▼──────────────────┐
-        │ Generar SEO   │   │ Email error (sin título)   │
-        │ Exportar JSON │   └───────────────────────────┘
-        │ Email éxito   │
-        └────────┬───────┘
-                 │
-        ┌────────▼──────────────────┐
-        │ FIN — Email "Proceso OK"  │
-        └───────────────────────────┘
+```mermaid
+flowchart TD
+    A["🚀 INICIO — main()"] --> B["📋 Parsear args CLI\n--tag, --category\n--subcategory, --output"]
+    B --> C{"🔑 ¿Clave API OK?"}
+    C -- NO --> D["❌ Email error + sys.exit(1)"]
+    C -- SÍ --> E["⚙️ generate_and_save_article()"]
+
+    subgraph GEN ["Fase 1: Generación del artículo"]
+        E --> F["📝 build_generation_prompt()"]
+        F --> G["🤖 generate_article_with_ai()"]
+        G --> G1["🔗 LangChain LCEL chain\n(primario)"]
+        G1 -. falla .-> G2["🔄 OpenAI SDK fallback"]
+        G1 --> G3["📦 _extract_json_block\n+ _safe_json_loads"]
+        G2 --> G3
+        G3 --> H["→ title, summary,\nbody, keywords"]
+    end
+
+    H --> I{"🔍 ¿Título demasiado\nsimilar?"}
+    I -- NO --> K["✅ Aceptar título"]
+    I -- SÍ --> J["🔄 generate_title_with_ai()\n(máx. 5 intentos)"]
+    J --> K
+
+    K --> L{"📰 ¿Título obtenido?"}
+    L -- NO --> M["❌ Email error\n(sin título único)"]
+    L -- SÍ --> N["🏷️ Generar metadatos SEO\n+ Exportar JSON\n+ Email éxito"]
+    N --> O["✅ FIN — Email 'Proceso OK'"]
+
+    style A fill:#f59e0b,stroke:#d97706,color:#000
+    style E fill:#3b82f6,stroke:#2563eb,color:#fff
+    style G fill:#10b981,stroke:#059669,color:#fff
+    style N fill:#6366f1,stroke:#4f46e5,color:#fff
+    style O fill:#22c55e,stroke:#16a34a,color:#fff
+    style D fill:#ef4444,stroke:#dc2626,color:#fff
+    style M fill:#ef4444,stroke:#dc2626,color:#fff
 ```
 
 ---
 
-### 12.2 Diagrama detallado: Pipeline de generación
+### 11.2 Diagrama detallado: Pipeline de generación
 
-```
-  seed_data.py                    generateArticle.py (CLI)
-  ─────────────                   ─────────────────────────────
+```mermaid
+flowchart LR
+    subgraph REF ["📚 Referencia"]
+        SD["seed_data.py\nTAXONOMY[]"]
+    end
 
-  TAXONOMY[]                      args: --tag, --category, --subcategory
-     │                                    │
-     │  (referencia de temas              │
-     │   disponibles)                     ▼
-     │                        generate_and_save_article(
-     │                            tag_text, parent_name, subcat_name, ...)
-     │                                    │
-     │                                    ├─ build_generation_prompt()
-     │                                    │   → Prompt SEO con instrucciones
-     │                                    │
-     │                                    ├─ generate_article_with_ai()
-     │                                    │   → LangChain (primario)
-     │                                    │   → OpenAI SDK (fallback)
-     │                                    │   → (title, summary, body, keywords)
-     │                                    │
-     │                                    ├─ is_too_similar()?
-     │                                    │   SÍ → generate_title_with_ai()
-     │                                    │         (máx. MAX_TITLE_RETRIES)
-     │                                    │
-     │                                    ├─ slugify(title)
-     │                                    ├─ count_words(body)
-     │                                    ├─ estimate_reading_time()
-     │                                    ├─ build_canonical_url()
-     │                                    ├─ build_json_ld_structured_data()
-     │                                    │
-     │                                    ▼
-     │                               json.dump(doc)
-     │                               → article.json  (fichero de salida)
+    subgraph CLI ["🐍 generateArticle.py"]
+        ARGS["args:\n--tag, --category\n--subcategory"] --> GAS["generate_and_save_article()"]
+        GAS --> BP["build_generation_prompt()\n→ Prompt SEO"]
+        BP --> GAI["generate_article_with_ai()\n→ LangChain / SDK fallback"]
+        GAI --> SIM{"is_too_similar()?"}
+        SIM -- SÍ --> GTI["generate_title_with_ai()\n(máx. MAX_TITLE_RETRIES)"]
+        SIM -- NO --> POST
+        GTI --> POST["Post-procesado"]
+        POST --> SL["slugify(title)"]
+        POST --> CW["count_words(body)"]
+        POST --> ERT["estimate_reading_time()"]
+        POST --> BCU["build_canonical_url()"]
+        POST --> BJL["build_json_ld_structured_data()"]
+        SL & CW & ERT & BCU & BJL --> OUT["📄 json.dump(doc)\n→ article.json"]
+    end
+
+    SD -. "referencia de\ntemas disponibles" .-> ARGS
+
+    style SD fill:#f59e0b,stroke:#d97706,color:#000
+    style GAS fill:#3b82f6,stroke:#2563eb,color:#fff
+    style GAI fill:#10b981,stroke:#059669,color:#fff
+    style OUT fill:#6366f1,stroke:#4f46e5,color:#fff
 ```
 
 ---
 
-## 13. Optimización SEO completa
+## 12. Optimización SEO completa
 
 Esta sección documenta todas las funcionalidades SEO del sistema, cómo se generan y cómo se relacionan con las categorías, subcategorías y tags.
 
 ---
 
-### 13.1 Pipeline SEO del artículo
+### 12.1 Pipeline SEO del artículo
 
 El flujo completo de generación SEO sigue estos pasos:
 
-```
-Tag (--tag, keyword principal)
-    │
-    ▼
-build_generation_prompt()
-    │  → Prompt SEO con instrucciones de:
-    │    · Título SEO ≤60 chars con keyword al inicio
-    │    · Meta descripción ≤160 chars con CTA
-    │    · 5-7 keywords long-tail
-    │    · HTML semántico (h1 > h2 > h3)
-    │    · <strong>/<em> para énfasis
-    │    · FAQ con preguntas reales
-    │    · Conclusión con CTA
-    │
-    ▼
-generate_article_with_ai()
-    │  → (title, summary, body, keywords)
-    │
-    ▼
-generate_and_save_article()  ← orquestador principal
-    │
-    ├─ slugify(title)          → slug SEO-friendly
-    ├─ count_words(body)       → wordCount
-    ├─ estimate_reading_time() → readingTime
-    ├─ metaTitle               → title[:60]
-    ├─ metaDescription         → summary[:160]
-    ├─ build_canonical_url()   → canonicalUrl
-    ├─ build_json_ld_structured_data()  → structuredData
-    ├─ ogTitle, ogDescription, ogType   → Open Graph
-    │
-    ▼
-json.dump(doc, output_file)
-    → Fichero JSON con TODOS los campos SEO
+```mermaid
+flowchart TD
+    TAG["🏷️ Tag — --tag\n(keyword principal)"] --> BGP["📝 build_generation_prompt()"]
+
+    subgraph PROMPT ["Instrucciones SEO en el prompt"]
+        BGP --> I1["Título SEO ≤60 chars\ncon keyword al inicio"]
+        BGP --> I2["Meta descripción ≤160 chars\ncon CTA"]
+        BGP --> I3["5-7 keywords long-tail"]
+        BGP --> I4["HTML semántico\nh1 → h2 → h3"]
+        BGP --> I5["FAQ con preguntas reales\n+ Conclusión con CTA"]
+    end
+
+    I1 & I2 & I3 & I4 & I5 --> GAI["🤖 generate_article_with_ai()\n→ title, summary, body, keywords"]
+
+    GAI --> GAS["⚙️ generate_and_save_article()\n(orquestador principal)"]
+
+    subgraph SEO ["Post-procesado SEO"]
+        GAS --> S1["slugify(title) → slug"]
+        GAS --> S2["count_words(body) → wordCount"]
+        GAS --> S3["estimate_reading_time() → readingTime"]
+        GAS --> S4["metaTitle → title ≤60 chars"]
+        GAS --> S5["metaDescription → summary ≤160 chars"]
+        GAS --> S6["build_canonical_url() → canonicalUrl"]
+        GAS --> S7["build_json_ld_structured_data()\n→ structuredData"]
+        GAS --> S8["ogTitle, ogDescription, ogType\n→ Open Graph"]
+    end
+
+    S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 --> OUT["📄 json.dump(doc)\n→ Fichero JSON con TODOS los campos SEO"]
+
+    style TAG fill:#f59e0b,stroke:#d97706,color:#000
+    style GAI fill:#10b981,stroke:#059669,color:#fff
+    style GAS fill:#3b82f6,stroke:#2563eb,color:#fff
+    style OUT fill:#6366f1,stroke:#4f46e5,color:#fff
 ```
 
 ---
 
-### 13.2 Funciones SEO en detalle
+### 12.2 Funciones SEO en detalle
 
 #### `build_canonical_url(site: str, slug: str) → str`
 
@@ -713,48 +678,34 @@ Genera un diccionario con datos estructurados JSON-LD siguiendo el vocabulario [
 
 ---
 
-### 13.3 Relación SEO ↔ Categorías, Subcategorías y Tags
+### 12.3 Relación SEO ↔ Categorías, Subcategorías y Tags
 
 La jerarquía de tres niveles tiene un papel directo en la estrategia SEO:
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  CATEGORÍA PADRE (Silo temático / Content cluster)                   │
-│  ej. "Spring Boot"  →  pasado con --category                        │
-│                                                                      │
-│  ROL SEO:                                                            │
-│  · Define el cluster de contenido (topic cluster)                   │
-│  · Los artículos dentro del mismo silo se refuerzan mutuamente      │
-│  · Mejora la autoridad temática (topical authority) del sitio       │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  SUBCATEGORÍA (Sección del artículo / Article section)        │  │
-│  │  ej. "Lombok"  →  pasado con --subcategory                    │  │
-│  │                                                                │  │
-│  │  ROL SEO:                                                      │  │
-│  │  · Campo `articleSection` en datos estructurados               │  │
-│  │  · Campo `category` en el JSON exportado                       │  │
-│  │  · Permite navegación facetada en el frontend                  │  │
-│  │                                                                │  │
-│  │  ┌──────────────────────────────────────────────────────────┐ │  │
-│  │  │  TAG (Palabra clave principal / Primary keyword)         │ │  │
-│  │  │  ej. "@Data"  →  pasado con --tag                        │ │  │
-│  │  │                                                           │ │  │
-│  │  │  ROL SEO:                                                 │ │  │
-│  │  │  · Semilla del prompt → keyword principal del artículo   │ │  │
-│  │  │  · Incluida en el título (al inicio para SEO)            │ │  │
-│  │  │  · Incluida en la meta descripción                       │ │  │
-│  │  │  · Incluida en el <h1> del body                          │ │  │
-│  │  │  · Campo `about` en datos estructurados                  │ │  │
-│  │  │  · Campo `tags` en el JSON exportado                     │ │  │
-│  │  └──────────────────────────────────────────────────────────┘ │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph CAT ["📁 CATEGORÍA PADRE — Silo temático / Content cluster"]
+        direction TB
+        CAT_INFO["ej. 'Spring Boot' → --category\n\n• Define el cluster de contenido (topic cluster)\n• Los artículos del mismo silo se refuerzan mutuamente\n• Mejora la autoridad temática (topical authority)"]
+
+        subgraph SUBCAT ["📂 SUBCATEGORÍA — Sección del artículo"]
+            direction TB
+            SUBCAT_INFO["ej. 'Lombok' → --subcategory\n\n• Campo articleSection en datos estructurados\n• Campo category en el JSON exportado\n• Permite navegación facetada en el frontend"]
+
+            subgraph TAG_BOX ["🏷️ TAG — Palabra clave principal"]
+                TAG_INFO["ej. '@Data' → --tag\n\n• Semilla del prompt → keyword principal\n• Incluida en el título (al inicio para SEO)\n• Incluida en la meta descripción\n• Incluida en el h1 del body\n• Campo about en datos estructurados\n• Campo tags en el JSON exportado"]
+            end
+        end
+    end
+
+    style CAT fill:#dbeafe,stroke:#3b82f6,color:#000
+    style SUBCAT fill:#d1fae5,stroke:#10b981,color:#000
+    style TAG_BOX fill:#fef3c7,stroke:#f59e0b,color:#000
 ```
 
 ---
 
-### 13.4 Instrucciones SEO en el prompt de generación
+### 12.4 Instrucciones SEO en el prompt de generación
 
 El prompt enviado a la IA incluye las siguientes directivas SEO:
 
@@ -776,7 +727,7 @@ El prompt enviado a la IA incluye las siguientes directivas SEO:
 
 ---
 
-### 13.5 Cómo usar los campos SEO en tu frontend
+### 12.5 Cómo usar los campos SEO en tu frontend
 
 Para que los artículos generados se beneficien del SEO completo, tu frontend debe renderizar los metadatos almacenados:
 
@@ -808,7 +759,7 @@ Para que los artículos generados se beneficien del SEO completo, tu frontend de
 
 ---
 
-### 13.6 Métricas SEO generadas automáticamente
+### 12.6 Métricas SEO generadas automáticamente
 
 | Métrica | Función | Uso en frontend |
 |---|---|---|
