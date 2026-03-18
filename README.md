@@ -35,9 +35,10 @@ Sistema de generación y publicación automática de artículos técnicos con in
 | Herramienta | Versión mínima | Para qué |
 |---|---|---|
 | **Python** | 3.10+ | Ejecutar el script |
-| **Docker** y **Docker Compose** | Docker 20+ | Levantar MongoDB local (opcional) |
-| **Cuenta MongoDB Atlas** | — | Cluster en la nube (recomendado) |
 | **Clave de OpenAI** o **Google Gemini** | — | Generar artículos con IA (al menos una) |
+| **Docker** y **Docker Compose** | Docker 20+ | Ejecutar el generador en contenedor (opcional) |
+
+> **No se requiere MongoDB.** El artículo generado se exporta directamente a un fichero JSON local.
 
 ### 1. Clonar el repositorio
 
@@ -46,39 +47,7 @@ git clone https://github.com/juanfranciscofernandezherreros/python-openai.git
 cd python-openai
 ```
 
-### 2. Configurar MongoDB
-
-#### Opción A – MongoDB Atlas (recomendado)
-
-El cluster de MongoDB Atlas ya está disponible en:
-
-```
-mongodb+srv://ex_dbuser:<db_password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0
-```
-
-No necesitas Docker. Simplemente salta al paso 3 y rellena la variable `MONGODB_URI` con esta cadena de conexión (sustituyendo `<db_password>` por la contraseña real del usuario `ex_dbuser`).
-
-#### Opción B – MongoDB local con Docker Compose
-
-```bash
-docker compose up -d
-```
-
-Esto arranca un contenedor **MongoDB 7** en el puerto `27017` con:
-- Usuario: `admin`
-- Contraseña: `admin1234`
-- Base de datos inicial: `blogdb`
-- Volumen persistente `mongo_data` para no perder datos al reiniciar.
-
-Comprueba que está sano:
-
-```bash
-docker compose ps
-```
-
-Deberías ver el servicio `mongodb-articles` con estado **healthy**.
-
-### 3. Configurar las variables de entorno
+### 2. Configurar las variables de entorno
 
 Copia el fichero de ejemplo y edita los valores:
 
@@ -90,20 +59,17 @@ Abre `.env` con tu editor y rellena, como mínimo:
 
 | Variable | Qué poner |
 |---|---|
-| `MONGODB_URI` | URI de Atlas: `mongodb+srv://ex_dbuser:<db_password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0` (sustituye `<db_password>`) |
 | `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys). Requerida si `OPENAI_MODEL` es un modelo OpenAI. |
 | `GEMINI_API_KEY` | Tu clave de API de Google Gemini. Requerida si `OPENAI_MODEL` es un modelo Gemini (p. ej. `gemini-2.0-flash`). |
 | `OPENAI_MODEL` | Modelo de IA a usar. Ejemplos OpenAI: `gpt-4o`, `gpt-3.5-turbo`. Ejemplos Gemini: `gemini-2.0-flash`, `gemini-1.5-pro`. Por defecto: `gpt-4o`. |
 | `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP). Si usas Gmail, [crea una contraseña de aplicación aquí](https://myaccount.google.com/apppasswords) |
-| `AUTHOR_USERNAME` | Nombre del usuario autor en tu base de datos |
+| `AUTHOR_USERNAME` | Nombre del autor de los artículos generados |
 | `SITE` | URL de tu web (p. ej. `https://tusitio.com`) — **importante para SEO** (URLs canónicas y datos estructurados) |
 | `ARTICLE_LANGUAGE` | Código ISO 639-1 del idioma de los artículos (p. ej. `es`, `en`, `fr`). Por defecto: `es`. |
 | `AI_TEMPERATURE_ARTICLE` | Temperatura de generación del artículo (0.0–1.0). Por defecto: `0.7`. |
 | `AI_TEMPERATURE_TITLE` | Temperatura de generación del título (0.0–1.0). Por defecto: `0.9`. |
 
-> **Nota:** Si usas el `docker-compose.yml` incluido para MongoDB local, cambia `MONGODB_URI` a `mongodb://admin:admin1234@localhost:27017/blogdb?authSource=admin`.
-
-### 4. Crear el entorno virtual e instalar dependencias
+### 3. Crear el entorno virtual e instalar dependencias
 
 Crea el entorno virtual (`.venv`):
 
@@ -125,71 +91,44 @@ Instala las dependencias:
 pip install -r requirements.txt
 ```
 
-### 5. Sembrar categorías y tags predefinidos
+### 4. Ejecutar el script principal
 
-Antes de generar artículos, es necesario que la base de datos tenga categorías y
-tags. Puedes hacerlo de dos formas:
-
-**Opción A – Automática (con Docker Compose local)**
-
-Al levantar el contenedor por primera vez, el script `mongo-init/init_seed.js`
-se ejecuta automáticamente y siembra todos los datos. No necesitas hacer nada más.
-
-> **Nota:** Este seed automático solo ocurre cuando el volumen `mongo_data` está
-> vacío (primera vez). Si ya tienes el contenedor corriendo, usa la Opción B.
-> Si usas MongoDB Atlas, usa siempre la Opción B.
-
-**Opción B – Manual (script Python)**
-
-Con MongoDB ya en marcha, ejecuta:
+El script requiere el argumento `--tag` (tema del artículo). El resto son opcionales:
 
 ```bash
-python seed_data.py
+python3 generateArticle.py \
+  --tag "JWT Authentication" \
+  --category "Spring Boot" \
+  --subcategory "Spring Security" \
+  --output article.json \
+  --language es
 ```
 
-El script crea (o actualiza de forma idempotente) los siguientes temas:
+#### Argumentos CLI disponibles
 
-| Categoría padre | Subcategorías | Tags por subcategoría |
-|---|---|---|
-| **Spring Boot** | Spring Boot Core · Spring Security · Spring Data JPA · Spring MVC REST · Spring Boot Testing · Lombok | 10 tags cada una |
-| **Data & Persistencia** | JPA e Hibernate · Bases de Datos SQL · NoSQL y MongoDB · Migraciones de Esquema | 8-10 tags cada una |
-| **Inteligencia Artificial** | Spring AI · LLMs y Modelos de Lenguaje · Machine Learning con Java · Vector Databases y RAG | 10 tags cada una |
-
-Cada subcategoría incluye 8-10 tags específicos (p. ej. `@Entity y @Table`,
-`JWT Authentication`, `RAG (Retrieval Augmented Generation)`). En total, **3 categorías padre**, **14 subcategorías** y **~140 tags**.
-
-### 6. Ejecutar el script principal
-
-```bash
-python3 generateArticle.py
-```
+| Argumento | Obligatorio | Descripción | Por defecto |
+|---|---|---|---|
+| `--tag` / `-t` | ✅ | Tema o tag del artículo | — |
+| `--category` / `-c` | ❌ | Nombre de la categoría padre | `General` |
+| `--subcategory` / `-s` | ❌ | Nombre de la subcategoría | `General` |
+| `--output` / `-o` | ❌ | Ruta del fichero JSON de salida | `article.json` |
+| `--author` / `-a` | ❌ | Nombre del autor | valor de `AUTHOR_USERNAME` |
+| `--site` | ❌ | URL base del sitio para URLs canónicas | valor de `SITE` |
+| `--language` / `-l` | ❌ | Código de idioma ISO 639-1 (`es`, `en`, `fr`…) | valor de `ARTICLE_LANGUAGE` |
+| `--avoid-titles` | ❌ | Títulos a evitar (separados por `;`). El script compara el nuevo título con esta lista y regenera si la similitud supera el umbral 0.86 | `""` |
 
 El script:
-1. Comprueba la configuración.
-2. Se conecta a MongoDB.
-3. Busca un tag sin artículo publicado (regla estricta de cobertura).
-4. Genera el artículo con IA (OpenAI o Google Gemini, optimizado para SEO).
-5. Genera metadatos SEO: `metaTitle`, `metaDescription`, `canonicalUrl`, datos estructurados JSON-LD y Open Graph.
-6. Lo guarda en la base de datos y te notifica por correo.
+1. Valida la configuración (clave de API disponible).
+2. Genera el artículo con IA (OpenAI o Google Gemini, optimizado para SEO).
+3. Genera metadatos SEO: `metaTitle`, `metaDescription`, `canonicalUrl`, datos estructurados JSON-LD y Open Graph.
+4. Guarda el documento completo en el fichero JSON indicado por `--output`.
+5. Notifica el resultado por correo (si hay SMTP configurado).
 
-### 7. Ejecutar los tests
+### 5. Ejecutar los tests
 
 ```bash
 pip install pytest
 python -m pytest test_generateArticle.py test_seed_data.py -v
-```
-
-### Comandos útiles de Docker Compose (solo para MongoDB local)
-
-```bash
-# Ver logs de MongoDB
-docker compose logs -f mongodb
-
-# Parar el contenedor
-docker compose down
-
-# Parar y borrar el volumen de datos
-docker compose down -v
 ```
 
 ---
@@ -204,10 +143,22 @@ docker build -t article-generator:latest .
 
 ### Ejecutar pasando el fichero `.env`
 
-El modo más sencillo: todas las variables del `.env` se inyectan en el contenedor con `--env-file`.
+El modo más sencillo: todas las variables del `.env` se inyectan en el contenedor con `--env-file`. Pasa el tema a generar como argumentos al final:
 
 ```bash
-docker run --rm --env-file .env article-generator:latest
+docker run --rm --env-file .env article-generator:latest \
+  --tag "JWT Authentication" \
+  --category "Spring Boot" \
+  --subcategory "Spring Security"
+```
+
+El artículo se guarda en `article.json` dentro del contenedor. Para conservarlo en el host, monta un volumen:
+
+```bash
+docker run --rm --env-file .env \
+  -v $(pwd)/output:/app/output \
+  article-generator:latest \
+  --tag "JWT Authentication" --output /app/output/article.json
 ```
 
 ### Ejecutar con variables individuales (`-e`)
@@ -216,12 +167,6 @@ docker run --rm --env-file .env article-generator:latest
 
 ```bash
 docker run --rm \
-  -e MONGODB_URI="mongodb+srv://ex_dbuser:<password>@cluster0.9kjmkdg.mongodb.net/?appName=Cluster0" \
-  -e DB_NAME=blogdb \
-  -e CATEGORY_COLL=categories \
-  -e TAGS_COLL=tags \
-  -e USERS_COLL=users \
-  -e ARTICLES_COLL=articles \
   -e OPENAIAPIKEY="sk-XXXXXXXXXXXXXXXXXXXX" \
   -e OPENAI_MODEL=gpt-4o \
   -e GEMINI_API_KEY="AIzaSy-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" \
@@ -234,30 +179,18 @@ docker run --rm \
   -e FROM_EMAIL="tu_correo@gmail.com" \
   -e NOTIFY_EMAIL="tu_correo@gmail.com" \
   -e NOTIFY_VERBOSE=true \
-  -e LIMIT_PUBLICATION=true \
-  -e SEND_PROMPT_EMAIL=false \
   -e ARTICLE_LANGUAGE=es \
   -e AI_TEMPERATURE_ARTICLE=0.7 \
   -e AI_TEMPERATURE_TITLE=0.9 \
-  article-generator:latest
+  article-generator:latest \
+  --tag "@Data" --category "Spring Boot" --subcategory "Lombok"
 ```
 
-### Sembrar datos con Docker
+### Usar Docker Compose
 
 ```bash
-docker run --rm --env-file .env article-generator:latest python seed_data.py
-```
-
-### Usar Docker Compose (MongoDB local + app)
-
-El servicio `app` tiene el perfil `run` para evitar que se lance junto con MongoDB en el arranque normal.
-
-```bash
-# 1. Levantar solo MongoDB
-docker compose up -d
-
-# 2. Ejecutar el generador de artículos una vez (usa MongoDB del compose)
-docker compose --profile run up app
+# Ejecutar el generador de artículos con argumentos CLI
+docker compose run --rm app --tag "@Data" --category "Spring Boot" --subcategory "Lombok"
 ```
 
 ---
@@ -268,10 +201,12 @@ El directorio `k8s/` contiene los manifiestos necesarios para ejecutar el genera
 
 ```
 k8s/
-├── configmap.yaml   # Variables no sensibles (DB_NAME, SMTP_HOST, etc.)
-├── secret.yaml      # Plantilla para variables sensibles (MONGODB_URI, OPENAIAPIKEY…)
+├── configmap.yaml   # Variables no sensibles (SMTP_HOST, SITE, etc.)
+├── secret.yaml      # Plantilla para variables sensibles (OPENAIAPIKEY, GEMINI_API_KEY…)
 └── cronjob.yaml     # CronJob – se ejecuta cada lunes a las 08:00 (Europe/Madrid)
 ```
+
+> **Nota:** Edita el campo `command` en `k8s/cronjob.yaml` para configurar el tema (`--tag`, `--category`, `--subcategory`) que el CronJob generará en cada ejecución.
 
 ### Paso 1 – Publicar la imagen en un registry
 
@@ -297,7 +232,6 @@ Codifica cada valor sensible en base64 y rellena `k8s/secret.yaml` (o crea `k8s/
 
 ```bash
 # Generar los valores codificados
-echo -n "mongodb+srv://..." | base64
 echo -n "sk-XXXX"          | base64  # OPENAIAPIKEY (OpenAI)
 echo -n "AIzaSy-XXXX"      | base64  # GEMINI_API_KEY (Google Gemini, si aplica)
 echo -n "correo@gmail.com" | base64
@@ -420,7 +354,6 @@ Cloud Run Jobs es la opción nativa de Google Cloud para ejecutar tareas en cont
 
 ```bash
 # Crear cada secreto con el valor real (sin salto de línea final)
-echo -n "mongodb+srv://..." | gcloud secrets create MONGODB_URI  --data-file=- --project=<PROJECT_ID>
 echo -n "sk-XXXX"           | gcloud secrets create OPENAIAPIKEY --data-file=- --project=<PROJECT_ID>
 echo -n "AIzaSy-XXXX"       | gcloud secrets create GEMINI_API_KEY --data-file=- --project=<PROJECT_ID>
 echo -n "correo@gmail.com"  | gcloud secrets create SMTP_USER    --data-file=- --project=<PROJECT_ID>
@@ -488,15 +421,14 @@ gcloud logging read \
 
 ## 📰 ¿Qué es este script?
 
-Este programa automatiza la publicación de artículos técnicos en tu web, **optimizados para SEO desde su generación**.
+Este programa automatiza la generación de artículos técnicos, **optimizados para SEO desde su generación**, mediante argumentos de línea de comandos.
 
-Cada semana genera **un nuevo artículo técnico**, escrito con ayuda de **inteligencia artificial (IA)**, y lo guarda directamente en tu **base de datos MongoDB** con todos los metadatos necesarios para posicionamiento en buscadores.
+Dado un tema (tag), categoría y subcategoría, genera **un artículo técnico completo** con ayuda de **inteligencia artificial (IA)** y lo exporta a un **fichero JSON** con todos los metadatos necesarios para posicionamiento en buscadores.
 
 Además, **te avisa por correo electrónico** de todo lo que hace:
 - si empezó correctamente,
-- si publicó algo,
-- si encontró algún error,
-- o si ya no quedan temas disponibles.
+- si generó el artículo con éxito,
+- si encontró algún error.
 
 ---
 
@@ -505,19 +437,16 @@ Además, **te avisa por correo electrónico** de todo lo que hace:
 ```mermaid
 flowchart TD
     A["⏰ Scheduler\n(K8s CronJob / Cloud Scheduler)"] -->|"Cada lunes 08:00 Madrid"| B
-    B["🐍 generateArticle.py\n(Script principal)"] --> C["🔍 Validación\n(.env + conexión)"]
-    C --> D["🗄️ MongoDB\n(Categorías, Tags, Artículos)"]
-    D -->|"Consulta tags sin artículo"| E["🎯 Selección de tema\n(pick_fresh_target_strict)"]
-    E --> F["🤖 IA API\n(OpenAI GPT / Google Gemini\n— generación SEO)"]
+    B["🐍 generateArticle.py\n--tag --category --subcategory"] --> C["🔍 Validación\n(.env + clave API)"]
+    C --> F["🤖 IA API\n(OpenAI GPT / Google Gemini\n— generación SEO)"]
     F -->|"Título + Body + Keywords + FAQ"| G["📝 Post-procesado SEO\n(metaTitle, canonicalUrl,\nJSON-LD, Open Graph)"]
-    G --> H["💾 MongoDB\n(insert artículo publicado)"]
+    G --> H["💾 Fichero JSON\n(article.json)"]
     H --> I["📧 Notificación email\n(SMTP)"]
-    I --> J["🌐 Blog\n(lee artículos de MongoDB)"]
+    I --> J["🌐 Blog\n(importa el JSON generado)"]
 
     style A fill:#f59e0b,stroke:#d97706,color:#000
     style B fill:#3b82f6,stroke:#2563eb,color:#fff
     style F fill:#10b981,stroke:#059669,color:#fff
-    style D fill:#6366f1,stroke:#4f46e5,color:#fff
     style H fill:#6366f1,stroke:#4f46e5,color:#fff
     style J fill:#ec4899,stroke:#db2777,color:#fff
 ```
@@ -527,23 +456,19 @@ flowchart TD
 ```
 Scheduler (CronJob)
        ↓
-generateArticle.py
+generateArticle.py --tag ... --category ... --subcategory ...
        ↓
   ┌─── Validación de entorno ───┐
-  │         ↓                   │
-  │    MongoDB (consulta)       │
-  │         ↓                   │
-  │    Selección de tema        │
   │         ↓                   │
   │    IA API (OpenAI / Gemini) │
   │         ↓                   │
   │    SEO post-procesado       │
   │         ↓                   │
-  │    MongoDB (guarda)         │
+  │    Fichero JSON (salida)    │
   │         ↓                   │
   └─── Email notificación ─────┘
        ↓
-     Blog (publica)
+     Blog (importa el JSON)
 ```
 
 ---
@@ -623,17 +548,17 @@ La estructura de tres niveles no solo organiza el contenido, sino que refuerza e
 
 ## ⚙️ ¿Qué necesita para funcionar?
 
-Antes de poder publicar artículos, el script necesita algunos datos y accesos:
+Para generar artículos, el script necesita los siguientes datos y accesos:
 
 | Tipo de dato | Para qué sirve |
 |---------------|----------------|
-| **Base de datos MongoDB** | Donde están las categorías, etiquetas (tags), usuarios y artículos. Puede ser un cluster Atlas o una instancia local. |
 | **Clave de API de IA** | `OPENAIAPIKEY` para OpenAI (GPT) o `GEMINI_API_KEY` para Google Gemini. Al menos una es necesaria según el modelo elegido en `OPENAI_MODEL`. |
-| **Servidor de correo (SMTP)** | Para poder enviarte emails con las notificaciones. |
-| **Usuario autor** | El nombre del usuario (por ejemplo "adminUser") con el que se publicarán los artículos. |
-| **URL del sitio (`SITE`)** | Necesaria para generar URLs canónicas y datos estructurados correctos. |
+| **Argumento `--tag`** | El tema del artículo a generar. Se pasa como argumento CLI al ejecutar el script. |
+| **Servidor de correo (SMTP)** | Para enviarte emails con las notificaciones (opcional). |
+| **Autor (`--author`)** | Nombre del autor del artículo. Puede configurarse también con `AUTHOR_USERNAME` en el `.env`. |
+| **URL del sitio (`--site`)** | Necesaria para generar URLs canónicas y datos estructurados correctos. Puede configurarse con `SITE` en el `.env`. |
 
-Todos esos datos se guardan en un archivo oculto llamado **`.env`**, que el script lee automáticamente.
+Todos los datos de configuración se guardan en un archivo oculto llamado **`.env`**, que el script lee automáticamente. Los argumentos CLI sobreescriben los valores del `.env`.
 
 ---
 
@@ -710,38 +635,18 @@ No pasa nada. El script está preparado para publicar artículos también **aunq
 ### 1) Empieza y revisa la configuración
 Cuando lo ejecutas, lo primero que hace es comprobar que están todas las claves y accesos necesarios:
 - OpenAI o Google Gemini (según `OPENAI_MODEL`)
-- MongoDB
-- SMTP (correo electrónico)
-- Colecciones (categorías, tags, usuarios y artículos)
+- SMTP (correo electrónico, opcional)
 
-Si falta algo, te envía un correo avisándote y **se detiene**.
+Si falta la clave de API, te envía un correo avisándote y **se detiene**.
 
-### 2) Se conecta a la base de datos
-Abre conexión con tu base de datos MongoDB y revisa que haya:
-- Categorías
-- Tags (etiquetas)
-- El usuario autor que publicará los artículos.
+### 2) Recibe el tema a generar
+El script recibe el tema mediante argumentos CLI:
+- `--tag` (obligatorio): el tema o tag del artículo
+- `--category` y `--subcategory`: clasificación del artículo
+- `--language`: idioma de generación
 
-Si no encuentra alguna de esas cosas, también te lo avisa por correo.
-
-### 3) Comprueba el límite semanal
-Antes de crear nada nuevo, revisa si **ya se publicó un artículo esta semana** (de lunes a domingo, según el horario de Madrid).
-
-- Si **ya hay uno**, **no publica otro** y te manda un email diciendo:
-  > "Ya existe un artículo esta semana, no se publicará ninguno nuevo."
-
-- Si **no hay ninguno**, continúa con el proceso.
-
-### 4) Busca un tema disponible (regla estricta de cobertura)
-El script examina todas las categorías, subcategorías y tags:
-
-- Aplica la **regla estricta**: solo elige un tema si los **tres niveles** (categoría padre, subcategoría y tag) **no tienen aún ningún artículo publicado**.
-- Si encuentra un tag que cumpla, lo elige aleatoriamente.
-- Si **todos los tags ya tienen artículos**, intenta publicar sobre una subcategoría sin cobertura.
-- Si todo está cubierto, te envía un correo y termina.
-
-### 5) Pide a la IA que escriba el artículo (optimizado para SEO)
-Una vez que elige el tag, genera un encargo para la IA con instrucciones SEO detalladas:
+### 3) Pide a la IA que escriba el artículo (optimizado para SEO)
+Genera un encargo para la IA con instrucciones SEO detalladas:
 
 > "Escribe un artículo SEO en español sobre *@Builder* (categoría: Spring Boot, subcategoría: Lombok).
 > Título optimizado para SEO y CTR (máx. 60 caracteres), con keyword principal al inicio.
@@ -755,14 +660,14 @@ La IA devuelve el artículo completo en formato JSON:
 - **body** — contenido completo en HTML semántico
 - **keywords** — 5-7 palabras clave SEO
 
-### 6) Revisa que el título sea único
+### 4) Revisa que el título sea único
 Para evitar duplicados o artículos parecidos:
-- Compara el nuevo título con los **50 más recientes** usando `difflib.SequenceMatcher`.
+- Compara el nuevo título con los títulos pasados en `--avoid-titles` usando `difflib.SequenceMatcher`.
 - Si es **demasiado parecido** (ratio ≥ 0.86), regenera solo el título (no el artículo entero) hasta 5 veces.
 
-Si después de varios intentos no consigue uno suficientemente diferente, te avisa por correo y no publica nada.
+Si después de varios intentos no consigue uno suficientemente diferente, te avisa por correo y no guarda nada.
 
-### 7) Genera metadatos SEO y guarda el artículo
+### 5) Genera metadatos SEO y guarda el artículo en JSON
 Si todo está bien:
 - Crea un **slug** SEO-friendly (ej. `como-usar-builder-en-spring-boot`).
 - Calcula `wordCount` y `readingTime`.
@@ -770,24 +675,24 @@ Si todo está bien:
 - Genera los **datos estructurados JSON-LD** (Schema.org `TechArticle`).
 - Genera los metadatos **Open Graph** (`ogTitle`, `ogDescription`, `ogType`).
 - Asigna autor, fecha y estado "publicado".
-- Lo guarda en la colección de artículos de tu base de datos.
+- Lo guarda en el fichero JSON indicado por `--output`.
 
 Luego te envía un email con algo así:
 
-> ✅ **Artículo publicado**
+> ✅ **Artículo guardado**
 > Título: "Cómo usar @Builder en Spring Boot"
 > Enlace: `https://tuweb.com/post/como-usar-builder-en-spring-boot`
 > Tag: *@Builder*
 
-### 8) Actualiza el historial y termina
-Añade el nuevo título a la lista interna para no repetirlo, y finaliza el proceso con un último mensaje en pantalla y por email:
-> "Proceso terminado. Artículos creados: 1 (límite semanal alcanzado)."
+### 6) Termina
+Finaliza el proceso con un último mensaje en pantalla y por email:
+> "Proceso terminado. Artículo guardado en 'article.json'."
 
 ---
 
 ## 📄 Documento del artículo generado (campos SEO)
 
-Cada artículo insertado en MongoDB incluye los siguientes campos:
+El artículo se exporta a un fichero JSON con la siguiente estructura:
 
 ```json
 {
@@ -795,13 +700,18 @@ Cada artículo insertado en MongoDB incluye los siguientes campos:
   "slug":            "como-usar-data-en-lombok",
   "summary":         "Aprende a reducir el código boilerplate con @Data de Lombok.",
   "body":            "<h1>...</h1><p>...</p>...",
-  "category":        "ObjectId(subcategoría)",
-  "tags":            ["ObjectId(tag)"],
-  "author":          "ObjectId(usuario)",
+  "category":        "Lombok",
+  "tags":            ["@Data"],
+  "author":          "adminUser",
   "status":          "published",
-  "publishDate":     "ISODate(...)",
-  "createdAt":       "ISODate(...)",
-  "updatedAt":       "ISODate(...)",
+  "likes":           [],
+  "favoritedBy":     [],
+  "isVisible":       true,
+  "publishDate":     "2025-06-15T08:00:00+00:00",
+  "generatedAt":     "2025-06-15T08:00:00+00:00",
+  "createdAt":       "2025-06-15T08:00:00+00:00",
+  "updatedAt":       "2025-06-15T08:00:00+00:00",
+  "images":          null,
   "wordCount":       1240,
   "readingTime":     6,
   "keywords":        ["lombok", "@data", "java", "boilerplate", "pojo"],
@@ -958,13 +868,13 @@ public class UserEntity {
 
 Las siguientes capturas muestran el resultado real del sistema en funcionamiento.
 
-> **Nota:** Reemplaza los placeholders SVG con capturas reales de tu entorno ejecutando el script contra MongoDB y revisando los resultados en tu blog.
+> **Nota:** Reemplaza los placeholders SVG con capturas reales de tu entorno ejecutando el script y revisando el fichero JSON generado y los resultados en tu blog.
 
-### Documento MongoDB
+### Fichero JSON generado
 
-Así se ve un artículo generado en MongoDB Compass / Atlas:
+Así se ve el fichero JSON generado por el script:
 
-![Documento MongoDB](docs/screenshots/mongodb-document.svg)
+![Fichero JSON generado](docs/screenshots/mongodb-document.svg)
 
 ### Página del artículo generado
 
@@ -985,18 +895,17 @@ Durante la ejecución, el script puede mandarte distintos tipos de mensajes por 
 
 | Tipo | Ejemplo |
 |------|----------|
-| ℹ️ **Info** | "Inicio de proceso" o "Datos cargados correctamente". |
-| ✅ **Éxito** | "Artículo publicado con éxito". |
-| ⚠️ **Advertencia** | "Ya existe un artículo esta semana" o "No quedan tags disponibles". |
-| ❌ **Error** | "Fallo al conectar a MongoDB" o "Error generando artículo". |
+| ℹ️ **Info** | "Inicio de proceso" o "OpenAI listo". |
+| ✅ **Éxito** | "Artículo guardado en 'article.json'". |
+| ⚠️ **Advertencia** | "Título similar detectado, regenerando...". |
+| ❌ **Error** | "Falta la variable de entorno OPENAIAPIKEY" o "Error generando artículo". |
 
 ---
 
 ## 🕐 Frecuencia de publicación
-- Publica **solo un artículo por semana**.
-- Usa el **horario de Madrid** para definir la semana (de lunes a domingo).
-- Si intentas ejecutarlo más veces dentro de la misma semana, lo detecta y se cancela automáticamente.
-- Puedes desactivar el límite semanal con `LIMIT_PUBLICATION=false` en el `.env`.
+- Genera **un artículo por ejecución** (una ejecución = un artículo).
+- Si usas un **CronJob semanal** (K8s o Cloud Scheduler), puedes programarlo para ejecutarse cada lunes a las 08:00.
+- La variable `LIMIT_PUBLICATION` está reservada para uso futuro y no afecta al comportamiento actual.
 
 ---
 
@@ -1011,30 +920,34 @@ Durante la ejecución, el script puede mandarte distintos tipos de mensajes por 
 
 | Acción | Descripción |
 |--------|--------------|
-| 📚 Leer categorías, subcategorías y tags | Para saber de qué temas puede escribir |
-| 🔍 Buscar un tag sin artículo publicado | Para elegir un tema nuevo (regla estricta en 3 niveles) |
+| 📥 Recibir el tema por CLI | `--tag`, `--category`, `--subcategory` pasados como argumentos al ejecutar |
 | ✍️ Generar artículo con IA (SEO) | Escribe título, resumen, cuerpo HTML y keywords optimizados para SEO |
 | 🏷️ Generar metadatos SEO | `metaTitle`, `metaDescription`, `canonicalUrl`, JSON-LD, Open Graph |
-| 🚫 Evitar repeticiones | No repite tags ni títulos similares (umbral 0.86) |
-| 💾 Guardar en MongoDB | Publica el artículo con todos los campos SEO |
+| 🚫 Evitar repeticiones | No repite títulos similares (umbral 0.86) — usa `--avoid-titles` para pasar títulos existentes |
+| 💾 Exportar a JSON | Guarda el artículo completo con todos los campos SEO en el fichero indicado por `--output` |
 | 📧 Notificar por correo | Te informa de todo lo que ha hecho |
 
 ---
 
 ## 🌟 Ejemplo de funcionamiento real
 
-1. Lunes por la mañana se ejecuta el script.
-2. Detecta que no hay artículos esta semana.
-3. Encuentra el tag `@Data` (subcategoría: Lombok, categoría: Spring Boot) sin artículos.
-4. Pide a la IA un artículo SEO sobre "Uso de @Data en Lombok".
-5. Recibe: título SEO, meta descripción, HTML semántico con FAQ y keywords.
-6. Genera la URL canónica, los datos estructurados JSON-LD y los metadatos Open Graph.
-7. Lo publica con el usuario "adminUser".
-8. Te manda un email:
-   > ✅ Artículo publicado: "Cómo simplificar tu código con @Data en Lombok".
-   > Enlace: https://tusitio.com/post/como-simplificar-tu-codigo-con-data-en-lombok
+```bash
+python3 generateArticle.py \
+  --tag "@Data" \
+  --category "Spring Boot" \
+  --subcategory "Lombok" \
+  --output article.json \
+  --language es
+```
 
-La próxima vez que se ejecute esa misma semana, verá que ya hay uno publicado y **no hará nada más**.
+1. Valida que `OPENAIAPIKEY` (o `GEMINI_API_KEY`) está disponible.
+2. Pide a la IA un artículo SEO sobre "@Data" (categoría: Spring Boot, subcategoría: Lombok).
+3. Recibe: título SEO, meta descripción, HTML semántico con FAQ y keywords.
+4. Genera la URL canónica, los datos estructurados JSON-LD y los metadatos Open Graph.
+5. Guarda el artículo en `article.json` con el usuario "adminUser".
+6. Te manda un email:
+   > ✅ Artículo guardado: "Cómo simplificar tu código con @Data en Lombok".
+   > Enlace: https://tusitio.com/post/como-simplificar-tu-codigo-con-data-en-lombok
 
 ---
 

@@ -12,7 +12,7 @@ Gracias por tu interés en contribuir a este proyecto. A continuación se descri
 
 | Cambio realizado | Acción requerida en `README.md` |
 |---|---|
-| Nuevo campo en el documento de artículo | Actualizar la sección **Documento del artículo generado (campos SEO)** |
+| Nuevo campo en el documento del artículo (JSON) | Actualizar la sección **Documento del artículo generado (campos SEO)** |
 | Nuevo paso en el flujo de ejecución | Actualizar **Qué hace paso a paso** y el **diagrama de arquitectura** |
 | Nueva variable de entorno | Actualizar la tabla de variables en **Guía rápida de ejecución** |
 | Nuevo despliegue o infraestructura | Actualizar la sección correspondiente (Docker, K8s, GCloud) |
@@ -21,12 +21,13 @@ Gracias por tu interés en contribuir a este proyecto. A continuación se descri
 | Nueva funcionalidad SEO | Actualizar **Funcionalidades SEO** |
 | Cambio en notificaciones | Actualizar **Tipos de notificaciones que envía** |
 | Cambios visuales o de output | Actualizar la sección **Ejemplo de output generado** y/o los **screenshots** |
+| Nuevo argumento CLI | Actualizar la sección **Guía rápida de ejecución** con el nuevo argumento |
 
 ### ¿Qué secciones del README mantener al día?
 
 1. **Diagrama de arquitectura** — Debe reflejar el flujo real del sistema.
 2. **Ejemplo de output generado** — Debe mostrar un ejemplo representativo del HTML, FAQ y metadatos que produce el script.
-3. **Screenshots** — Deben actualizarse cuando cambie la estructura del documento MongoDB, la página generada o los metadatos SEO.
+3. **Screenshots** — Deben actualizarse cuando cambie la estructura del documento JSON generado o los metadatos SEO.
 4. **Tabla de campos SEO** — Debe incluir todos los campos actuales del documento.
 5. **Índice** — Debe incluir todas las secciones del README.
 
@@ -54,10 +55,10 @@ Gracias por tu interés en contribuir a este proyecto. A continuación se descri
 ## 📂 Estructura de archivos
 
 ```
-├── generateArticle.py       # Script principal
-├── seed_data.py             # Seed de datos
+├── generateArticle.py       # Script principal (CLI, sin MongoDB)
+├── seed_data.py             # Referencia de categorías/tags disponibles
 ├── test_generateArticle.py  # Tests del script principal
-├── test_seed_data.py        # Tests del seed
+├── test_seed_data.py        # Tests de la referencia de datos
 ├── README.md                # Documentación principal (¡siempre actualizar!)
 ├── ARTICLE_GENERATION.md    # Documentación técnica detallada
 ├── CONTRIBUTING.md          # Esta guía

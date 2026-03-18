@@ -45,18 +45,19 @@ spec:
                 limits:
                   cpu: "1"
                   memory: 512Mi
+              # Ajusta --tag, --category y --subcategory con el tema que deseas generar.
+              # Consulta la lista de categorías y tags disponibles en seed_data.py o en la documentación.
+              args:
+                - "--tag"
+                - "@Data"
+                - "--category"
+                - "Spring Boot"
+                - "--subcategory"
+                - "Lombok"
+                - "--output"
+                - "/tmp/article.json"
               env:
                 # ── Variables no sensibles ──────────────────────────────────
-                - name: DB_NAME
-                  value: blogdb
-                - name: CATEGORY_COLL
-                  value: categories
-                - name: TAGS_COLL
-                  value: tags
-                - name: USERS_COLL
-                  value: users
-                - name: ARTICLES_COLL
-                  value: articles
                 - name: OPENAI_MODEL
                   value: gpt-4o
                 - name: SITE
@@ -86,11 +87,6 @@ spec:
                 # ── Variables sensibles desde Secret Manager ─────────────────
                 # Crea cada secreto con:
                 #   echo -n "valor" | gcloud secrets create NOMBRE --data-file=-
-                - name: MONGODB_URI
-                  valueFrom:
-                    secretKeyRef:
-                      name: MONGODB_URI
-                      key: latest
                 - name: OPENAIAPIKEY
                   valueFrom:
                     secretKeyRef:

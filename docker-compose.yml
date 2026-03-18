@@ -1,42 +1,15 @@
 services:
-  mongodb:
-    image: mongo:7
-    container_name: mongodb-articles
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS:-admin1234}
-      MONGO_INITDB_DATABASE: ${DB_NAME:-blogdb}
-    volumes:
-      - mongo_data:/data/db
-      - ./mongo-init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   # ── Generador de artículos ────────────────────────────────────────────────
-  # Ejecuta generateArticle.py una vez y termina (perfil "run").
-  # Uso:  docker compose --profile run up app
+  # Ejecuta generateArticle.py una vez y termina.
+  # Uso:
+  #   docker compose run --rm app --tag "@Data" --category "Spring Boot" --subcategory "Lombok"
+  #
+  # El artículo generado se guarda en ./output/article.json (volumen montado).
   app:
     build: .
     image: article-generator:latest
-    profiles:
-      - run
-    depends_on:
-      mongodb:
-        condition: service_healthy
     env_file:
       - .env
-    # Permite sobrescribir variables concretas sin editar .env
-    environment:
-      # Cuando se usa MongoDB local del compose, apunta al servicio "mongodb"
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:admin1234@mongodb:27017/blogdb?authSource=admin}
+    volumes:
+      - ./output:/app/output
     restart: "no"
-
-volumes:
-  mongo_data:
