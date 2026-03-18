@@ -1269,3 +1269,54 @@ class TestMainCli:
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_main_passes_username_arg(self, mock_openai_cls, mock_gen):
+        """main() must pass --username to generate_and_save_article as author_name."""
+        import sys
+        from generateArticle import main
+        with patch.object(sys, "argv", [
+            "generateArticle.py",
+            "--tag", "Lombok",
+            "--username", "myUser",
+        ]):
+            main()
+        _, kwargs = mock_gen.call_args
+        assert kwargs["author_name"] == "myUser"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_main_passes_author_alias(self, mock_openai_cls, mock_gen):
+        """--author must work as a backward-compatible alias for --username."""
+        import sys
+        from generateArticle import main
+        with patch.object(sys, "argv", [
+            "generateArticle.py",
+            "--tag", "Lombok",
+            "--author", "legacyUser",
+        ]):
+            main()
+        _, kwargs = mock_gen.call_args
+        assert kwargs["author_name"] == "legacyUser"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_main_passes_site_arg(self, mock_openai_cls, mock_gen):
+        """main() must pass --site to generate_and_save_article."""
+        import sys
+        from generateArticle import main
+        with patch.object(sys, "argv", [
+            "generateArticle.py",
+            "--tag", "Lombok",
+            "--site", "https://myblog.com",
+        ]):
+            main()
+        _, kwargs = mock_gen.call_args
+        assert kwargs["site"] == "https://myblog.com"

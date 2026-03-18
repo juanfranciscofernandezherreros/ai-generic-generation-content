@@ -75,8 +75,8 @@ El script acepta los siguientes argumentos CLI (todos sobreescriben las variable
 | `--category` / `-c` | ❌ | `General` | Nombre de la categoría padre |
 | `--subcategory` / `-s` | ❌ | `General` | Nombre de la subcategoría |
 | `--output` / `-o` | ❌ | `article.json` | Ruta del fichero JSON de salida |
-| `--author` / `-a` | ❌ | `AUTHOR_USERNAME` | Nombre del autor |
-| `--site` | ❌ | `SITE` | URL base del sitio |
+| `--username` / `--author` / `-u` / `-a` | ❌ | `AUTHOR_USERNAME` | Username/nombre del autor (`--author` y `-a` son alias para compatibilidad) |
+| `--site` / `-S` | ❌ | `SITE` | URL base del sitio |
 | `--language` / `-l` | ❌ | `ARTICLE_LANGUAGE` | Código de idioma ISO 639-1 |
 | `--avoid-titles` | ❌ | `""` | Títulos a evitar, separados por `;` |
 
@@ -503,7 +503,7 @@ El artículo exportado al fichero JSON tiene la siguiente estructura:
 | `body` | `string` | Cuerpo completo del artículo en HTML semántico. |
 | `category` | `string` | Nombre de la subcategoría (o categoría) indicada con `--subcategory`. |
 | `tags` | `[string]` | Lista de tags. Contiene el valor de `--tag`. |
-| `author` | `string` | Nombre del autor (valor de `--author`). |
+| `author` | `string` | Nombre/username del autor (valor de `--username` / `--author`). |
 | `status` | `string` | Estado del artículo (`published`). |
 
 ### Campos SEO
@@ -698,7 +698,7 @@ Genera un diccionario con datos estructurados JSON-LD siguiendo el vocabulario [
 | `@type` | `TechArticle` | Fijo (artículos técnicos) |
 | `headline` | Título (≤ 110 chars) | `title` del artículo |
 | `description` | Resumen (≤ 200 chars) | `summary` del artículo |
-| `author` | `{ @type: Person, name: ... }` | `--author` / `AUTHOR_USERNAME` |
+| `author` | `{ @type: Person, name: ... }` | `--username` / `--author` / `AUTHOR_USERNAME` |
 | `publisher` | `{ @type: Organization, name: ..., url: ... }` | `--site` / `SITE` |
 | `datePublished` | ISO 8601 | Fecha de publicación |
 | `dateModified` | ISO 8601 | Fecha de modificación |

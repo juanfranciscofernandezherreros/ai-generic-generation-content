@@ -112,8 +112,8 @@ python3 generateArticle.py \
 | `--category` / `-c` | ❌ | Nombre de la categoría padre | `General` |
 | `--subcategory` / `-s` | ❌ | Nombre de la subcategoría | `General` |
 | `--output` / `-o` | ❌ | Ruta del fichero JSON de salida | `article.json` |
-| `--author` / `-a` | ❌ | Nombre del autor | valor de `AUTHOR_USERNAME` |
-| `--site` | ❌ | URL base del sitio para URLs canónicas | valor de `SITE` |
+| `--username` / `--author` / `-u` / `-a` | ❌ | Username/nombre del autor | valor de `AUTHOR_USERNAME` |
+| `--site` / `-S` | ❌ | URL base del sitio para URLs canónicas | valor de `SITE` |
 | `--language` / `-l` | ❌ | Código de idioma ISO 639-1 (`es`, `en`, `fr`…) | valor de `ARTICLE_LANGUAGE` |
 | `--avoid-titles` | ❌ | Títulos a evitar (separados por `;`). El script compara el nuevo título con esta lista y regenera si la similitud supera el umbral 0.86 | `""` |
 
@@ -555,7 +555,7 @@ Para generar artículos, el script necesita los siguientes datos y accesos:
 | **Clave de API de IA** | `OPENAIAPIKEY` para OpenAI (GPT) o `GEMINI_API_KEY` para Google Gemini. Al menos una es necesaria según el modelo elegido en `OPENAI_MODEL`. |
 | **Argumento `--tag`** | El tema del artículo a generar. Se pasa como argumento CLI al ejecutar el script. |
 | **Servidor de correo (SMTP)** | Para enviarte emails con las notificaciones (opcional). |
-| **Autor (`--author`)** | Nombre del autor del artículo. Puede configurarse también con `AUTHOR_USERNAME` en el `.env`. |
+| **Username del autor (`--username`)** | Username/nombre del autor del artículo. Puede configurarse también con `AUTHOR_USERNAME` en el `.env`. `--author` / `-a` funciona como alias para compatibilidad con versiones anteriores. |
 | **URL del sitio (`--site`)** | Necesaria para generar URLs canónicas y datos estructurados correctos. Puede configurarse con `SITE` en el `.env`. |
 
 Todos los datos de configuración se guardan en un archivo oculto llamado **`.env`**, que el script lee automáticamente. Los argumentos CLI sobreescriben los valores del `.env`.

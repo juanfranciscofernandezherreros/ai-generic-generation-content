@@ -654,10 +654,13 @@ def main():
                         help="Nombre de la subcategoría")
     parser.add_argument("--output", "-o", default="article.json",
                         help="Ruta del fichero JSON de salida")
-    parser.add_argument("--author", "-a", default=AUTHOR_USERNAME,
-                        help="Nombre del autor")
-    parser.add_argument("--site", default=SITE,
-                        help="URL base del sitio para URLs canónicas (p. ej. https://myblog.com)")
+    parser.add_argument("--username", "--author", "-u", "-a",
+                        dest="username",
+                        default=AUTHOR_USERNAME,
+                        help="Username/nombre del autor (también configurable con AUTHOR_USERNAME en .env)")
+    parser.add_argument("--site", "-S",
+                        default=SITE,
+                        help="URL base del sitio para URLs canónicas (p. ej. https://myblog.com), también configurable con SITE en .env")
     parser.add_argument("--language", "-l", default=ARTICLE_LANGUAGE,
                         help="Código de idioma ISO 639-1 (p. ej. es, en, fr)")
     parser.add_argument("--avoid-titles", default="",
@@ -698,7 +701,7 @@ def main():
             parent_name=args.category,
             subcat_name=args.subcategory,
             avoid_titles=avoid_titles,
-            author_name=args.author,
+            author_name=args.username,
             site=args.site,
             language=args.language,
             output_path=args.output,
