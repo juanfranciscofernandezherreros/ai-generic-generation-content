@@ -13,12 +13,11 @@ Este documento explica en detalle la arquitectura interna, el flujo de datos y c
 5. [Flujo de ejecución paso a paso](#5-flujo-de-ejecución-paso-a-paso)
 6. [Funciones auxiliares (helpers)](#6-funciones-auxiliares-helpers)
 7. [Gestión de categorías, subcategorías y tags](#7-gestión-de-categorías-subcategorías-y-tags)
-8. [Integración con IA (OpenAI y Google Gemini)](#8-integración-con-ia-openai-y-google-gemini)
-9. [Control del límite semanal](#9-control-del-límite-semanal)
-10. [Sistema de notificaciones por correo](#10-sistema-de-notificaciones-por-correo)
-11. [Documento JSON exportado](#11-documento-json-exportado)
-12. [Diagrama de flujo](#12-diagrama-de-flujo)
-13. [Optimización SEO completa](#13-optimización-seo-completa)
+8. [Integración con IA (OpenAI, Google Gemini y Ollama)](#8-integración-con-ia-openai-google-gemini-y-ollama)
+9. [Sistema de notificaciones por correo](#9-sistema-de-notificaciones-por-correo)
+10. [Documento JSON exportado](#10-documento-json-exportado)
+11. [Diagrama de flujo](#11-diagrama-de-flujo)
+12. [Optimización SEO completa](#12-optimización-seo-completa)
 
 ---
 
@@ -410,24 +409,7 @@ La respuesta puede llegar en distintos formatos:
 
 ---
 
-## 9. Control del límite semanal
-
-```python
-def current_week_window_utc_for_madrid(start_weekday=1):
-    tz_madrid = ZoneInfo("Europe/Madrid")
-    today = datetime.now(tz_madrid).date()
-    # Calcula el lunes de la semana actual
-    delta_days = (today.isoweekday() - start_weekday) % 7
-    start_local = datetime.combine(today - timedelta(days=delta_days), time(0,0), tzinfo=tz_madrid)
-    end_local = start_local + timedelta(days=7)
-    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
-```
-
-Esta función se usa internamente para calcular ventanas de tiempo en hora de Madrid, independientemente del huso horario del servidor.
-
----
-
-## 10. Sistema de notificaciones por correo
+## 9. Sistema de notificaciones por correo
 
 `notify(subject, message, level, always_email)` centraliza todo el logging:
 
@@ -443,7 +425,7 @@ Los niveles disponibles son: `info`, `success`, `warning`, `error`.
 
 ---
 
-## 11. Documento JSON exportado
+## 10. Documento JSON exportado
 
 El artículo exportado al fichero JSON tiene la siguiente estructura:
 
@@ -541,9 +523,9 @@ El artículo exportado al fichero JSON tiene la siguiente estructura:
 
 ---
 
-## 12. Diagrama de flujo
+## 11. Diagrama de flujo
 
-### 12.1 Flujo principal del script
+### 11.1 Flujo principal del script
 
 ```
 ┌─────────────────────────────────────────┐
@@ -591,7 +573,7 @@ El artículo exportado al fichero JSON tiene la siguiente estructura:
 
 ---
 
-### 12.2 Diagrama detallado: Pipeline de generación
+### 11.2 Diagrama detallado: Pipeline de generación
 
 ```
   seed_data.py                    generateArticle.py (CLI)
@@ -629,13 +611,13 @@ El artículo exportado al fichero JSON tiene la siguiente estructura:
 
 ---
 
-## 13. Optimización SEO completa
+## 12. Optimización SEO completa
 
 Esta sección documenta todas las funcionalidades SEO del sistema, cómo se generan y cómo se relacionan con las categorías, subcategorías y tags.
 
 ---
 
-### 13.1 Pipeline SEO del artículo
+### 12.1 Pipeline SEO del artículo
 
 El flujo completo de generación SEO sigue estos pasos:
 
@@ -676,7 +658,7 @@ json.dump(doc, output_file)
 
 ---
 
-### 13.2 Funciones SEO en detalle
+### 12.2 Funciones SEO en detalle
 
 #### `build_canonical_url(site: str, slug: str) → str`
 
@@ -715,7 +697,7 @@ Genera un diccionario con datos estructurados JSON-LD siguiendo el vocabulario [
 
 ---
 
-### 13.3 Relación SEO ↔ Categorías, Subcategorías y Tags
+### 12.3 Relación SEO ↔ Categorías, Subcategorías y Tags
 
 La jerarquía de tres niveles tiene un papel directo en la estrategia SEO:
 
@@ -756,7 +738,7 @@ La jerarquía de tres niveles tiene un papel directo en la estrategia SEO:
 
 ---
 
-### 13.4 Instrucciones SEO en el prompt de generación
+### 12.4 Instrucciones SEO en el prompt de generación
 
 El prompt enviado a la IA incluye las siguientes directivas SEO:
 
@@ -778,7 +760,7 @@ El prompt enviado a la IA incluye las siguientes directivas SEO:
 
 ---
 
-### 13.5 Cómo usar los campos SEO en tu frontend
+### 12.5 Cómo usar los campos SEO en tu frontend
 
 Para que los artículos generados se beneficien del SEO completo, tu frontend debe renderizar los metadatos almacenados:
 
@@ -810,7 +792,7 @@ Para que los artículos generados se beneficien del SEO completo, tu frontend de
 
 ---
 
-### 13.6 Métricas SEO generadas automáticamente
+### 12.6 Métricas SEO generadas automáticamente
 
 | Métrica | Función | Uso en frontend |
 |---|---|---|

@@ -1,5 +1,5 @@
 [project]
-name = "python-openai-article-generator"
+name = "python-article"
 version = "0.1.0"
 description = "CLI tool to generate SEO-optimized technical articles using LLM providers (OpenAI/Gemini/Ollama)."
 readme = "README.md"

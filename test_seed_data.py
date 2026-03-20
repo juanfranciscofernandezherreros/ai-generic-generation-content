@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for seed_data.py taxonomy definition."""
 
 from seed_data import TAXONOMY

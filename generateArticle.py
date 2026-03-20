@@ -1,19 +1,27 @@
-# -*- coding: utf-8 -*-
 import argparse
+import difflib
+import json
+import logging
 import math
-import os, sys, json, random, re, unicodedata, difflib, logging
+import os
+import random
+import re
 import smtplib
+import sys
 import time as _time
+import unicodedata
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from openai import OpenAI
-from dotenv import load_dotenv
-from email.message import EmailMessage
 from email.header import Header
-from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
+from email.message import EmailMessage
+from typing import Any, Union
+
+from dotenv import load_dotenv
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
+from openai import OpenAI
 
 # ============ LOGGING ============
 logging.basicConfig(
@@ -66,7 +74,7 @@ OLLAMA_PLACEHOLDER_API_KEY   = "ollama"  # clave ficticia para Ollama (no requie
 
 # ============ IDIOMAS ============
 # Mapa de códigos ISO 639-1 a nombres de idioma (escritos en español, para usar en los prompts)
-_LANGUAGE_NAMES: Dict[str, str] = {
+_LANGUAGE_NAMES: dict[str, str] = {
     "es": "español",
     "en": "inglés",
     "fr": "francés",
@@ -109,7 +117,7 @@ def as_list(v: Any) -> list:
     if isinstance(v, (list, tuple, set)): return list(v)
     return [v]
 
-def tag_name(t: Dict[str, Any]) -> str:
+def tag_name(t: dict[str, Any]) -> str:
     return str(t.get("name") or t.get("tag") or t.get("_id"))
 
 def slugify(text: str) -> str:
@@ -190,14 +198,14 @@ def build_json_ld_structured_data(
     title: str,
     summary: str,
     canonical_url: str,
-    keywords: List[str],
+    keywords: list[str],
     author_name: str,
     date_published: str,
     date_modified: str,
     word_count: int,
     reading_time: int,
     category_name: str,
-    tag_names: List[str],
+    tag_names: list[str],
     site: str,
     language: str = ARTICLE_LANGUAGE,
 ) -> dict:
@@ -209,7 +217,7 @@ def build_json_ld_structured_data(
     en resultados enriquecidos (rich snippets).
     """
     base_url = site.rstrip("/") if site else ""
-    data: Dict[str, Any] = {
+    data: dict[str, Any] = {
         "@context": "https://schema.org",
         "@type": "TechArticle",
         "headline": title[:110],
@@ -281,7 +289,7 @@ def notify(subject: str, message: str, level: str = "info", always_email: bool =
 # ========= Retry con back-off exponencial =========
 def _retry_with_backoff(fn: Callable, max_retries: int = OPENAI_MAX_RETRIES, base_delay: float = OPENAI_RETRY_BASE_DELAY) -> Any:
     """Ejecuta *fn()* con reintentos y back-off exponencial. Reintenta solo errores transitorios."""
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     for attempt in range(1, max_retries + 1):
         try:
             return fn()
@@ -294,7 +302,7 @@ def _retry_with_backoff(fn: Callable, max_retries: int = OPENAI_MAX_RETRIES, bas
             raise
     raise RuntimeError(f"Falló tras {max_retries} reintentos") from last_exc
 
-def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: Optional[str] = None, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
+def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str | None = None, avoid_titles: list[str] | None = None, language: str = ARTICLE_LANGUAGE) -> str:
     avoid_titles = avoid_titles or []
     avoid_block = ""
     if avoid_titles:
@@ -326,7 +334,7 @@ body (HTML semántico bien cerrado, optimizado para SEO on-page):
 Tono profesional, sin relleno. JSON con comillas escapadas.{avoid_block}
 """
 
-def build_title_prompt(parent_name: str, subcat_name: str, tag_text: Optional[str] = None, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
+def build_title_prompt(parent_name: str, subcat_name: str, tag_text: str | None = None, avoid_titles: list[str] | None = None, language: str = ARTICLE_LANGUAGE) -> str:
     """Construye un prompt ligero para generar únicamente el título de un artículo."""
     avoid_titles = avoid_titles or []
     avoid_block = ""
@@ -346,7 +354,7 @@ def build_title_prompt(parent_name: str, subcat_name: str, tag_text: Optional[st
         "Devuelve ÚNICAMENTE el texto del título, sin comillas ni texto adicional."
     )
 
-def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: Optional[str] = None, avoid_titles=None):
+def email_generation_prompt(parent_name: str, subcat_name: str, tag_text: str | None = None, avoid_titles=None):
     """
     Construye el prompt y lo envía por email usando SMTP ya configurado.
     NO intenta parsear ninguna respuesta de OpenAI (solo notifica).
@@ -404,7 +412,7 @@ class LLMChain:
         """Ejecuta la cadena con las variables del prompt y devuelve el texto generado."""
         return self._chain.invoke(input_variables)
 
-    def invoke(self, input_dict: Dict[str, Any]) -> str:
+    def invoke(self, input_dict: dict[str, Any]) -> str:
         """Ejecuta la cadena con un diccionario de variables del prompt y devuelve el texto generado.
 
         Args:
@@ -459,7 +467,7 @@ def _generate_with_langchain(
         raise RuntimeError("LangChain no devolvió contenido.")
     return result
 
-def generate_article_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> Tuple[str, str, str, List[str]]:
+def generate_article_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: list[str] | None = None, language: str = ARTICLE_LANGUAGE) -> tuple[str, str, str, list[str]]:
     """
     Genera el artículo usando LangChain (ChatOpenAI, ChatGoogleGenerativeAI o Ollama según el modelo).
     Para modelos OpenAI/ChatGPT y Ollama usa el SDK de OpenAI directamente como fallback si LangChain falla.
@@ -522,14 +530,14 @@ def generate_article_with_ai(client_ai: Optional[OpenAI], parent_name: str, subc
         body = f'<h1>{safe_title}</h1>\n' + body
 
     raw_keywords = data.get("keywords", [])
-    keywords: List[str] = (
+    keywords: list[str] = (
         [str(k).strip() for k in raw_keywords if str(k).strip()]
         if isinstance(raw_keywords, list) else []
     )
 
     return title, summary, body, keywords
 
-def generate_title_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat_name: str, tag_text: str, avoid_titles: Optional[List[str]] = None, language: str = ARTICLE_LANGUAGE) -> str:
+def generate_title_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: list[str] | None = None, language: str = ARTICLE_LANGUAGE) -> str:
     """
     Genera únicamente el título del artículo usando LangChain (ChatOpenAI, ChatGoogleGenerativeAI o Ollama).
     Para modelos OpenAI/ChatGPT y Ollama usa el SDK de OpenAI directamente como fallback si LangChain falla.
@@ -578,16 +586,16 @@ def generate_title_with_ai(client_ai: Optional[OpenAI], parent_name: str, subcat
     return raw_text.strip().strip("\"'").strip()[:META_TITLE_MAX_LENGTH]
 
 def generate_and_save_article(
-    client_ai: Optional[OpenAI],
-    tag_text: Optional[str],
+    client_ai: OpenAI | None,
+    tag_text: str | None,
     parent_name: str,
     subcat_name: str,
-    avoid_titles: Optional[List[str]] = None,
+    avoid_titles: list[str] | None = None,
     author_name: str = AUTHOR_USERNAME,
     site: str = SITE,
     language: str = ARTICLE_LANGUAGE,
     output_path: str = "article.json",
-    title: Optional[str] = None,
+    title: str | None = None,
 ) -> bool:
     """Genera un artículo con IA y lo guarda en un fichero JSON."""
     avoid_titles = list(avoid_titles) if avoid_titles else []
@@ -608,7 +616,7 @@ def generate_and_save_article(
     else:
         max_attempts = MAX_TITLE_RETRIES
         title = summary = body = None
-        keywords: List[str] = []
+        keywords: list[str] = []
 
         # Fase 1: Generar el artículo completo (única llamada costosa a OpenAI)
         t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
@@ -743,7 +751,7 @@ def main():
             sys.exit(1)
 
     # Inicializar cliente de IA (OpenAI SDK — para modelos ChatGPT y Ollama como fallback)
-    client_ai: Optional[OpenAI] = None
+    client_ai: OpenAI | None = None
     if using_ollama:
         try:
             client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key=OLLAMA_PLACEHOLDER_API_KEY)

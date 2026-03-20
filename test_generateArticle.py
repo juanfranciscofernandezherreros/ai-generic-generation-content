@@ -1,13 +1,31 @@
-# -*- coding: utf-8 -*-
 """Tests for pure helper functions in generateArticle.py."""
 
 import json
 import os
 import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from generateArticle import (
+    ARTICLE_LANGUAGE,
+    GENERATION_SYSTEM_MSG,
+    MAX_AVOID_TITLES_IN_PROMPT,
+    MAX_TITLE_RETRIES,
+    META_TITLE_MAX_LENGTH,
+    OLLAMA_PLACEHOLDER_API_KEY,
+    OPENAI_MAX_ARTICLE_TOKENS,
+    OPENAI_MAX_TITLE_TOKENS,
+    SIMILARITY_THRESHOLD_DEFAULT,
+    SIMILARITY_THRESHOLD_STRICT,
+    TITLE_SYSTEM_MSG,
+    LLMChain,
+    _extract_json_block,
+    _generate_with_langchain,
+    _is_gemini_model,
+    _is_ollama_provider,
+    _language_name,
+    _safe_json_loads,
     as_list,
     build_canonical_url,
     build_generation_prompt,
@@ -17,6 +35,8 @@ from generateArticle import (
     estimate_reading_time,
     extract_plain_text,
     generate_and_save_article,
+    generate_article_with_ai,
+    generate_title_with_ai,
     html_escape,
     is_too_similar,
     normalize_for_similarity,
@@ -25,28 +45,6 @@ from generateArticle import (
     slugify,
     str_id,
     tag_name,
-    _extract_json_block,
-    _safe_json_loads,
-    _language_name,
-    _generate_with_langchain,
-    _is_gemini_model,
-    _is_ollama_provider,
-    LLMChain,
-    generate_article_with_ai,
-    generate_title_with_ai,
-    SIMILARITY_THRESHOLD_DEFAULT,
-    SIMILARITY_THRESHOLD_STRICT,
-    MAX_TITLE_RETRIES,
-    META_TITLE_MAX_LENGTH,
-    MAX_AVOID_TITLES_IN_PROMPT,
-    GENERATION_SYSTEM_MSG,
-    TITLE_SYSTEM_MSG,
-    OPENAI_MAX_ARTICLE_TOKENS,
-    OPENAI_MAX_TITLE_TOKENS,
-    OLLAMA_PLACEHOLDER_API_KEY,
-    ARTICLE_LANGUAGE,
-    AI_TEMPERATURE_ARTICLE,
-    AI_TEMPERATURE_TITLE,
 )
 
 
@@ -708,12 +706,11 @@ class TestGenerateWithLangchain:
     @patch("generateArticle.ChatOpenAI")
     def test_llm_uses_correct_model_and_tokens(self, mock_llm_cls):
         """ChatOpenAI should be constructed with the configured model and max_tokens."""
-        import generateArticle
         mock_llm_instance = MagicMock()
         mock_llm_cls.return_value = mock_llm_instance
 
         with patch("generateArticle.ChatPromptTemplate") as mock_template, \
-             patch("generateArticle.StrOutputParser") as mock_parser:
+             patch("generateArticle.StrOutputParser"):
             fake_chain = MagicMock()
             fake_chain.invoke.return_value = "some content"
             mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
@@ -817,7 +814,7 @@ class TestGenerateTitleWithAILangchain:
     def test_uses_langchain_primary_path(self, mock_lc):
         """When LangChain succeeds the OpenAI SDK should not be called."""
         mock_client = MagicMock()
-        title = generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
+        generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
         mock_lc.assert_called_once()
         mock_client.chat.completions.create.assert_not_called()
 
@@ -908,7 +905,7 @@ class TestGenerateWithLangchainGemini:
     @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
     def test_does_not_use_openai_llm_for_gemini_model(self, mock_template, mock_parser, mock_openai_llm):
         """ChatOpenAI should NOT be instantiated when the model is a Gemini model."""
-        with patch("generateArticle.ChatGoogleGenerativeAI") as mock_google_llm:
+        with patch("generateArticle.ChatGoogleGenerativeAI"):
             fake_chain = MagicMock()
             fake_chain.invoke.return_value = "Gemini response"
             mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
@@ -1031,6 +1028,7 @@ class TestMainCliOllama:
     def test_main_does_not_require_api_key_with_ollama(self, mock_openai_cls, mock_gen):
         """main() should NOT exit when OPENAIAPIKEY is empty but OLLAMA_BASE_URL is set."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
             main()
@@ -1044,6 +1042,7 @@ class TestMainCliOllama:
     def test_main_initializes_openai_client_with_base_url(self, mock_openai_cls, mock_gen):
         """main() should create the OpenAI client with base_url pointing to Ollama."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
             main()
@@ -1094,7 +1093,7 @@ class TestLLMChain:
         mock_prompt.__or__ = MagicMock(return_value=MagicMock(
             __or__=MagicMock(return_value=fake_inner_chain)
         ))
-        with patch("generateArticle.StrOutputParser") as mock_parser:
+        with patch("generateArticle.StrOutputParser"):
             chain = LLMChain(llm=mock_llm, prompt=mock_prompt)
             result = chain.run(user_prompt="test input")
         assert result == "generated content"
@@ -1139,7 +1138,7 @@ class TestLLMChain:
         mock_prompt.__or__ = MagicMock(return_value=mock_prompt_llm)
         mock_prompt_llm.__or__ = MagicMock(return_value=mock_full_chain)
         with patch("generateArticle.StrOutputParser") as mock_parser:
-            chain = LLMChain(llm=mock_llm, prompt=mock_prompt)
+            LLMChain(llm=mock_llm, prompt=mock_prompt)
         mock_prompt.__or__.assert_called_once_with(mock_llm)
         mock_prompt_llm.__or__.assert_called_once_with(mock_parser.return_value)
 
@@ -1387,6 +1386,7 @@ class TestMainCli:
     def test_main_calls_generate_with_tag_arg(self, mock_openai_cls, mock_gen):
         """main() must call generate_and_save_article with the --tag argument."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Spring Boot"]):
             main()
@@ -1401,6 +1401,7 @@ class TestMainCli:
     def test_main_passes_category_and_subcategory(self, mock_openai_cls, mock_gen):
         """main() must pass --category and --subcategory to generate_and_save_article."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1420,6 +1421,7 @@ class TestMainCli:
     def test_main_passes_output_path(self, mock_openai_cls, mock_gen):
         """main() must pass the --output argument as output_path."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1438,6 +1440,7 @@ class TestMainCli:
     def test_main_passes_language(self, mock_openai_cls, mock_gen):
         """main() must pass the --language argument to generate_and_save_article."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1456,6 +1459,7 @@ class TestMainCli:
     def test_main_parses_avoid_titles(self, mock_openai_cls, mock_gen):
         """main() must parse semicolon-separated --avoid-titles into a list."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1474,6 +1478,7 @@ class TestMainCli:
     def test_main_exits_when_no_api_key(self):
         """main() must exit with code 1 when no API key is configured."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
             with pytest.raises(SystemExit) as exc_info:
@@ -1487,6 +1492,7 @@ class TestMainCli:
     def test_main_passes_username_arg(self, mock_openai_cls, mock_gen):
         """main() must pass --username to generate_and_save_article as author_name."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1505,6 +1511,7 @@ class TestMainCli:
     def test_main_passes_author_alias(self, mock_openai_cls, mock_gen):
         """--author must work as a backward-compatible alias for --username."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1523,6 +1530,7 @@ class TestMainCli:
     def test_main_passes_site_arg(self, mock_openai_cls, mock_gen):
         """main() must pass --site to generate_and_save_article."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1541,6 +1549,7 @@ class TestMainCli:
     def test_main_passes_title_arg(self, mock_openai_cls, mock_gen):
         """main() must pass --title to generate_and_save_article."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1559,6 +1568,7 @@ class TestMainCli:
     def test_main_title_default_is_none(self, mock_openai_cls, mock_gen):
         """main() must pass title=None when --title is not provided."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",
@@ -1576,6 +1586,7 @@ class TestMainCli:
     def test_main_category_is_required(self, mock_openai_cls, mock_gen):
         """main() must exit with error when --category is not provided."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", ["generateArticle.py", "--tag", "Lombok"]):
             with pytest.raises(SystemExit) as exc_info:
@@ -1589,6 +1600,7 @@ class TestMainCli:
     def test_main_tag_defaults_to_none(self, mock_openai_cls, mock_gen):
         """main() must pass tag_text=None when --tag is not provided."""
         import sys
+
         from generateArticle import main
         with patch.object(sys, "argv", [
             "generateArticle.py",

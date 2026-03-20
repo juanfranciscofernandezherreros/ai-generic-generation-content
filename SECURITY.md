@@ -1,24 +1,45 @@
-# Security Policy
+# Política de seguridad
 
-## Supported Versions
+## Versiones con soporte
 
-Security fixes are provided for the latest code on the `master` branch.
+Las correcciones de seguridad se aplican sobre el código más reciente de la rama `master`.
 
-## Reporting a Vulnerability
+## Información sensible en este proyecto
 
-Please report security vulnerabilities **privately**.
+Este proyecto maneja las siguientes credenciales y datos sensibles. **Nunca deben incluirse en el código fuente ni en el control de versiones:**
 
-- Do **not** open a public GitHub Issue for security reports.
-- Contact: **security@example.com**
+| Variable | Descripción |
+|---|---|
+| `OPENAIAPIKEY` | Clave de API de OpenAI (`sk-...`) |
+| `GEMINI_API_KEY` | Clave de API de Google Gemini |
+| `SMTP_PASS` | Contraseña del servidor SMTP (o contraseña de aplicación de Gmail) |
+| `SMTP_USER` | Usuario del servidor SMTP |
 
-Please include:
-- A description of the issue and potential impact
-- Steps to reproduce (proof of concept if possible)
-- Affected versions / commit SHA
-- Any suggested remediation
+Todas estas variables deben configurarse en el fichero **`.env`** local (nunca commiteado) o mediante un gestor de secretos.
 
-## Response Timeline (Best Effort)
+### Buenas prácticas de gestión de credenciales
 
-- Acknowledgement: within 7 days
-- Status update: within 14 days
-- Fix/release: as soon as reasonably possible
+- En **Kubernetes**: usa [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) (ver `k8s/secret.yaml`). Considera cifrarlos con [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) o [External Secrets Operator](https://external-secrets.io/).
+- En **Google Cloud**: usa [Secret Manager](https://cloud.google.com/secret-manager) para almacenar y rotar credenciales de forma segura.
+- En **CI/CD**: usa las variables de entorno cifradas de tu plataforma (GitHub Actions Secrets, GitLab CI Variables, etc.).
+- **Nunca** incluyas credenciales reales en ficheros YAML, Dockerfiles, ni en el histórico de Git.
+
+## Cómo reportar una vulnerabilidad
+
+Por favor, reporta las vulnerabilidades de seguridad de forma **privada**.
+
+- **No** abras un Issue público en GitHub para reportar vulnerabilidades de seguridad.
+- Contacto: **security@example.com** *(dirección de ejemplo — placeholder; sustituir por el contacto real del mantenedor)*
+
+Incluye en tu reporte:
+- Descripción del problema y su impacto potencial
+- Pasos para reproducirlo (prueba de concepto si es posible)
+- Versiones afectadas / SHA del commit
+- Posible remediación sugerida
+
+## Tiempos de respuesta (según disponibilidad)
+
+- **Acuse de recibo:** en un plazo de 7 días
+- **Actualización de estado:** en un plazo de 14 días
+- **Corrección / publicación:** en el menor tiempo razonablemente posible
+

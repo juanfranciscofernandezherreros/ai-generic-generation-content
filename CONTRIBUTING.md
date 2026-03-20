@@ -35,12 +35,35 @@ Gracias por tu interés en contribuir a este proyecto. A continuación se descri
 
 ## 🧪 Tests
 
-- Ejecuta todos los tests antes de enviar un PR:
-  ```bash
-  pip install pytest
-  python -m pytest test_generateArticle.py test_seed_data.py -v
-  ```
-- Añade tests para cualquier función nueva o modificada.
+El proyecto tiene dos ficheros de test que deben pasar antes de enviar un PR:
+
+- `test_generateArticle.py` — Tests del script principal (generación, SEO, CLI).
+- `test_seed_data.py` — Tests de la taxonomía de categorías, subcategorías y tags.
+
+Ejecuta todos los tests:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest test_generateArticle.py test_seed_data.py -v
+```
+
+Añade tests para cualquier función nueva o modificada.
+
+---
+
+## 🛠️ Calidad de código con ruff
+
+El proyecto usa **[ruff](https://docs.astral.sh/ruff/)** como linter y formateador (`line-length = 100`, Python 3.10+).
+
+Ejecuta siempre antes de enviar un PR:
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+ruff format .
+```
+
+La configuración de ruff está en `pyproject.toml`.
 
 ---
 
@@ -55,15 +78,60 @@ Gracias por tu interés en contribuir a este proyecto. A continuación se descri
 ## 📂 Estructura de archivos
 
 ```
-├── generateArticle.py       # Script principal (CLI, sin MongoDB)
-├── seed_data.py             # Referencia de categorías/tags disponibles
+python-article/
+├── generateArticle.py       # Script principal CLI
+├── seed_data.py             # Taxonomía: categorías, subcategorías y tags
 ├── test_generateArticle.py  # Tests del script principal
-├── test_seed_data.py        # Tests de la referencia de datos
+├── test_seed_data.py        # Tests de la taxonomía
+├── Dockerfile               # Imagen Docker (python:3.12-slim)
+├── docker-compose.yml       # Compose para ejecutar el generador
+├── pyproject.toml           # Configuración del proyecto (ruff, pytest)
+├── requirements.in          # Dependencias runtime (fuente)
+├── requirements.txt         # Dependencias runtime (compiladas)
+├── requirements-dev.in      # Dependencias de desarrollo (fuente)
+├── requirements-dev.txt     # Dependencias de desarrollo (compiladas)
+├── .env.example             # Plantilla de variables de entorno
 ├── README.md                # Documentación principal (¡siempre actualizar!)
 ├── ARTICLE_GENERATION.md    # Documentación técnica detallada
 ├── CONTRIBUTING.md          # Esta guía
-├── docs/screenshots/        # Screenshots del proyecto
-├── k8s/                     # Manifiestos Kubernetes
-├── gcloud/                  # Ficheros Google Cloud
-└── .env.example             # Plantilla de variables de entorno
+├── SECURITY.md              # Política de seguridad
+├── LICENSE                  # Licencia MIT
+├── k8s/                     # Manifiestos Kubernetes (CronJob)
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   └── cronjob.yaml
+└── gcloud/                  # Ficheros Google Cloud
+    ├── cloudbuild.yaml
+    └── cloud-run-job.yaml
 ```
+
+---
+
+## 🌿 Cómo añadir nuevas categorías, subcategorías y tags
+
+La taxonomía del proyecto se define en `seed_data.py`, en la constante `TAXONOMY`. Para añadir contenido nuevo:
+
+1. Abre `seed_data.py`.
+2. Para añadir una **nueva categoría**, agrega un nuevo objeto al array `TAXONOMY`:
+   ```python
+   {
+       "name": "Mi Nueva Categoría",
+       "description": "Descripción breve de la categoría.",
+       "subcategories": [...]
+   }
+   ```
+3. Para añadir una **nueva subcategoría**, agrega un objeto al array `subcategories` de la categoría correspondiente:
+   ```python
+   {
+       "name": "Mi Subcategoría",
+       "description": "Descripción breve.",
+       "tags": ["Tag 1", "Tag 2", "Tag 3"]
+   }
+   ```
+4. Para añadir **nuevos tags**, agrega strings al array `tags` de la subcategoría correspondiente.
+5. Actualiza la sección **🧩 Cómo organiza los temas** en `README.md` si cambias la estructura.
+6. Ejecuta los tests para asegurarte de que la taxonomía sigue siendo válida:
+   ```bash
+   python -m pytest test_seed_data.py -v
+   ```
+

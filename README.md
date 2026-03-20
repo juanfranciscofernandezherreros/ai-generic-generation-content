@@ -1,6 +1,13 @@
 # Publicación automática semanal con IA — Optimizado para SEO
 
-Sistema de generación y publicación automática de artículos técnicos con inteligencia artificial (**OpenAI GPT / Google Gemini / Ollama**), optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
+![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
+![License MIT](https://img.shields.io/badge/License-MIT-green)
+![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
+![LangChain](https://img.shields.io/badge/LangChain-LCEL-purple)
+
+Generador **CLI** de artículos técnicos SEO con salida a **JSON local** (sin base de datos), usando **LangChain** (LCEL) con soporte para **OpenAI GPT / Google Gemini / Ollama**. Optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
+
+> **Última actualización:** 2026-03-20
 
 ---
 
@@ -11,6 +18,7 @@ Sistema de generación y publicación automática de artículos técnicos con in
 - [🐳 Despliegue con Docker](#-despliegue-con-docker)
 - [☸️ Despliegue en Kubernetes](#️-despliegue-en-kubernetes)
 - [☁️ Despliegue en Google Cloud (GCloud)](#️-despliegue-en-google-cloud-gcloud)
+- [📂 Estructura del proyecto](#-estructura-del-proyecto)
 - [📰 ¿Qué es este script?](#-qué-es-este-script)
 - [🏗️ Diagrama de arquitectura](#️-diagrama-de-arquitectura)
 - [🔍 Funcionalidades SEO](#-funcionalidades-seo)
@@ -23,6 +31,8 @@ Sistema de generación y publicación automática de artículos técnicos con in
 - [📨 Tipos de notificaciones que envía](#-tipos-de-notificaciones-que-envía)
 - [🕐 Frecuencia de publicación](#-frecuencia-de-publicación)
 - [🔒 Seguridad y privacidad](#-seguridad-y-privacidad)
+- [⚙️ Constantes y configuración interna](#️-constantes-y-configuración-interna)
+- [🛠️ Calidad de código](#️-calidad-de-código)
 - [🧾 En resumen](#-en-resumen)
 - [🌟 Ejemplo de funcionamiento real](#-ejemplo-de-funcionamiento-real)
 - [🤝 Contribuir](#-contribuir)
@@ -44,8 +54,8 @@ Sistema de generación y publicación automática de artículos técnicos con in
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/juanfranciscofernandezherreros/python-openai.git
-cd python-openai
+git clone https://github.com/juanfranciscofernandezherreros/python-article.git
+cd python-article
 ```
 
 ### 2. Configurar las variables de entorno
@@ -536,6 +546,38 @@ gcloud logging read \
 
 ---
 
+## 📂 Estructura del proyecto
+
+```
+python-article/
+├── generateArticle.py       # Script principal CLI
+├── seed_data.py             # Taxonomía: categorías, subcategorías y tags
+├── test_generateArticle.py  # Tests del script principal
+├── test_seed_data.py        # Tests de la taxonomía
+├── Dockerfile               # Imagen Docker (python:3.12-slim)
+├── docker-compose.yml       # Compose para ejecutar el generador
+├── pyproject.toml           # Configuración del proyecto (ruff, pytest)
+├── requirements.in          # Dependencias runtime (fuente)
+├── requirements.txt         # Dependencias runtime (compiladas)
+├── requirements-dev.in      # Dependencias de desarrollo (fuente)
+├── requirements-dev.txt     # Dependencias de desarrollo (compiladas)
+├── .env.example             # Plantilla de variables de entorno
+├── README.md                # Documentación principal
+├── ARTICLE_GENERATION.md    # Documentación técnica detallada
+├── CONTRIBUTING.md          # Guía de contribución
+├── SECURITY.md              # Política de seguridad
+├── LICENSE                  # Licencia MIT
+├── k8s/                     # Manifiestos Kubernetes (CronJob)
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   └── cronjob.yaml
+└── gcloud/                  # Ficheros Google Cloud
+    ├── cloudbuild.yaml
+    └── cloud-run-job.yaml
+```
+
+---
+
 ## 📰 ¿Qué es este script?
 
 Este programa automatiza la generación de artículos técnicos, **optimizados para SEO desde su generación**, mediante argumentos de línea de comandos.
@@ -551,13 +593,15 @@ Además, **te avisa por correo electrónico** de todo lo que hace:
 
 ## 🏗️ Diagrama de arquitectura
 
+La generación de artículos usa **LangChain Expression Language (LCEL)** como capa principal: `ChatPromptTemplate | llm | StrOutputParser()` (encapsulado en la clase `LLMChain` del proyecto), con fallback al SDK de OpenAI en caso de error. Los proveedores soportados son OpenAI, Google Gemini y Ollama.
+
 ```mermaid
 flowchart TD
     A["⏰ Scheduler\n(K8s CronJob / Cloud Scheduler)"] -->|"Cada lunes 08:00 Madrid"| B
     B["🐍 generateArticle.py\n--tag --category --subcategory"] --> C["🔍 Validación\n(.env + clave API)"]
-    C --> F["🤖 IA API\n(OpenAI GPT / Google Gemini\n— generación SEO)"]
+    C --> F["🤖 LangChain LCEL\n(ChatPromptTemplate | llm | StrOutputParser)\n→ OpenAI / Gemini / Ollama\n[fallback: OpenAI SDK directo]"]
     F -->|"Título + Body + Keywords + FAQ"| G["📝 Post-procesado SEO\n(metaTitle, canonicalUrl,\nJSON-LD, Open Graph)"]
-    G --> H["💾 Fichero JSON\n(article.json)"]
+    G --> H["💾 Fichero JSON local\n(article.json)"]
     H --> I["📧 Notificación email\n(SMTP)"]
     I --> J["🌐 Blog\n(importa el JSON generado)"]
 
@@ -575,15 +619,17 @@ Scheduler (CronJob)
        ↓
 generateArticle.py --tag ... --category ... --subcategory ...
        ↓
-  ┌─── Validación de entorno ───┐
-  │         ↓                   │
-  │    IA API (OpenAI / Gemini) │
-  │         ↓                   │
-  │    SEO post-procesado       │
-  │         ↓                   │
-  │    Fichero JSON (salida)    │
-  │         ↓                   │
-  └─── Email notificación ─────┘
+  ┌─── Validación de entorno ──────────────────────────────┐
+  │         ↓                                               │
+  │    LangChain LCEL (ChatPromptTemplate | llm | Parser)  │
+  │    → OpenAI / Gemini / Ollama                          │
+  │    [fallback: OpenAI SDK directo]                      │
+  │         ↓                                               │
+  │    SEO post-procesado                                   │
+  │         ↓                                               │
+  │    Fichero JSON local (salida)                          │
+  │         ↓                                               │
+  └─── Email notificación ─────────────────────────────────┘
        ↓
      Blog (importa el JSON)
 ```
@@ -677,6 +723,16 @@ Para generar artículos, el script necesita los siguientes datos y accesos:
 
 Todos los datos de configuración se guardan en un archivo oculto llamado **`.env`**, que el script lee automáticamente. Los argumentos CLI sobreescriben los valores del `.env`.
 
+### Dependencias principales (`requirements.in`)
+
+| Paquete | Versión mínima | Para qué |
+|---|---|---|
+| `openai` | `>=1.0.0` | SDK de OpenAI (fallback y proveedor GPT) |
+| `python-dotenv` | `>=1.0.0` | Cargar variables de entorno desde `.env` |
+| `langchain-openai` | `>=1.1.11` | LangChain con ChatOpenAI para LCEL |
+| `langchain-core` | `>=1.2.19` | Núcleo de LangChain (ChatPromptTemplate, StrOutputParser) |
+| `langchain-google-genai` | `>=2.0.0` | LangChain con Google Gemini |
+
 ---
 
 ## 🧩 Cómo organiza los temas: Categorías, Subcategorías y Tags
@@ -763,7 +819,7 @@ El script recibe el tema mediante argumentos CLI:
 - `--language`: idioma de generación
 
 ### 3) Pide a la IA que escriba el artículo (optimizado para SEO)
-Genera un encargo para la IA con instrucciones SEO detalladas:
+Genera un encargo para la IA con instrucciones SEO detalladas usando **LangChain LCEL** (`ChatPromptTemplate | llm | StrOutputParser()`):
 
 > "Escribe un artículo SEO en español sobre *@Builder* (categoría: Spring Boot, subcategoría: Lombok).
 > Título optimizado para SEO y CTR (máx. 60 caracteres), con keyword principal al inicio.
@@ -1029,6 +1085,59 @@ Durante la ejecución, el script puede mandarte distintos tipos de mensajes por 
 - Las contraseñas, claves de API y datos sensibles **no están dentro del código**.
   Se guardan en el archivo `.env`, que **no debe compartirse**.
 - No envía datos a ningún sitio externo salvo al proveedor de IA configurado (OpenAI o Google Gemini, para generar el texto) y tu servidor de correo (para notificarte).
+
+---
+
+## ⚙️ Constantes y configuración interna
+
+El script define las siguientes constantes en `generateArticle.py`:
+
+| Constante | Valor | Descripción |
+|---|---|---|
+| `SIMILARITY_THRESHOLD_DEFAULT` | `0.82` | Umbral para detección genérica de títulos similares |
+| `SIMILARITY_THRESHOLD_STRICT` | `0.86` | Umbral usado al reintentar generación de título único |
+| `MAX_TITLE_RETRIES` | `5` | Intentos máximos para generar un título único |
+| `OPENAI_MAX_RETRIES` | `3` | Reintentos para llamadas a la API de IA |
+| `OPENAI_RETRY_BASE_DELAY` | `2` | Segundos base para backoff exponencial entre reintentos |
+| `META_TITLE_MAX_LENGTH` | `60` | Máximo de caracteres para `metaTitle` SEO |
+| `META_DESCRIPTION_MAX_LENGTH` | `160` | Máximo de caracteres para `metaDescription` SEO |
+| `MAX_AVOID_TITLES_IN_PROMPT` | `5` | Máximo de títulos a incluir en el prompt (para mantener prompts cortos) |
+| `OPENAI_MAX_ARTICLE_TOKENS` | `4096` | Límite de tokens de salida para artículos |
+| `OPENAI_MAX_TITLE_TOKENS` | `100` | Límite de tokens de salida para títulos |
+
+### Idiomas soportados (`ARTICLE_LANGUAGE`)
+
+| Código | Idioma |
+|---|---|
+| `es` | español |
+| `en` | inglés |
+| `fr` | francés |
+| `de` | alemán |
+| `it` | italiano |
+| `pt` | portugués |
+| `nl` | neerlandés |
+| `pl` | polaco |
+| `ru` | ruso |
+| `zh` | chino |
+| `ja` | japonés |
+| `ar` | árabe |
+
+---
+
+## 🛠️ Calidad de código
+
+El proyecto usa **[ruff](https://docs.astral.sh/ruff/)** como linter y formateador, configurado en `pyproject.toml`:
+
+- `line-length = 100`
+- Target: Python 3.10+
+
+Para ejecutar antes de un PR:
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+ruff format .
+```
 
 ---
 
