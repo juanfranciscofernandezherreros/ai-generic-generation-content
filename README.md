@@ -1,12 +1,13 @@
 # Publicación automática semanal con IA — Optimizado para SEO
 
-Sistema de generación y publicación automática de artículos técnicos con inteligencia artificial (OpenAI / Google Gemini), optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
+Sistema de generación y publicación automática de artículos técnicos con inteligencia artificial (**OpenAI GPT / Google Gemini / Ollama**), optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
 
 ---
 
 ## 📑 Índice
 
 - [🚀 Guía rápida de ejecución](#-guía-rápida-de-ejecución)
+- [🤖 Proveedores de IA](#-proveedores-de-ia)
 - [🐳 Despliegue con Docker](#-despliegue-con-docker)
 - [☸️ Despliegue en Kubernetes](#️-despliegue-en-kubernetes)
 - [☁️ Despliegue en Google Cloud (GCloud)](#️-despliegue-en-google-cloud-gcloud)
@@ -35,7 +36,7 @@ Sistema de generación y publicación automática de artículos técnicos con in
 | Herramienta | Versión mínima | Para qué |
 |---|---|---|
 | **Python** | 3.10+ | Ejecutar el script |
-| **Clave de OpenAI** o **Google Gemini** | — | Generar artículos con IA (al menos una) |
+| **Clave OpenAI**, **Gemini** o **Ollama** | — | Generar artículos con IA (al menos un proveedor) |
 | **Docker** y **Docker Compose** | Docker 20+ | Ejecutar el generador en contenedor (opcional) |
 
 > **No se requiere MongoDB.** El artículo generado se exporta directamente a un fichero JSON local.
@@ -55,20 +56,27 @@ Copia el fichero de ejemplo y edita los valores:
 cp .env.example .env
 ```
 
-Abre `.env` con tu editor y rellena, como mínimo:
+Abre `.env` con tu editor y configura el proveedor de IA que quieras usar (ver sección [🤖 Proveedores de IA](#-proveedores-de-ia) para ejemplos completos):
 
-| Variable | Qué poner |
-|---|---|
-| `OPENAIAPIKEY` | Tu clave de API de OpenAI (`sk-...`). [Crear API key aquí](https://platform.openai.com/api-keys). Requerida si `OPENAI_MODEL` es un modelo OpenAI. |
-| `GEMINI_API_KEY` | Tu clave de API de Google Gemini. Requerida si `OPENAI_MODEL` es un modelo Gemini (p. ej. `gemini-2.0-flash`). |
-| `OLLAMA_BASE_URL` | URL del servidor Ollama local (p. ej. `http://localhost:11434/v1`). Cuando se establece, se usa Ollama como proveedor de IA y no se requiere `OPENAIAPIKEY`. |
-| `OPENAI_MODEL` | Modelo de IA a usar. Ejemplos OpenAI: `gpt-4o`, `gpt-3.5-turbo`. Ejemplos Gemini: `gemini-2.0-flash`, `gemini-1.5-pro`. Ejemplos Ollama: `llama3`, `mistral`, `codellama`. Por defecto: `gpt-4o`. |
-| `SMTP_*` / `FROM_EMAIL` / `NOTIFY_EMAIL` | Datos de tu servidor de correo (SMTP). Si usas Gmail, [crea una contraseña de aplicación aquí](https://myaccount.google.com/apppasswords) |
-| `AUTHOR_USERNAME` | Nombre del autor de los artículos generados |
-| `SITE` | URL de tu web (p. ej. `https://tusitio.com`) — **importante para SEO** (URLs canónicas y datos estructurados) |
-| `ARTICLE_LANGUAGE` | Código ISO 639-1 del idioma de los artículos (p. ej. `es`, `en`, `fr`). Por defecto: `es`. |
-| `AI_TEMPERATURE_ARTICLE` | Temperatura de generación del artículo (0.0–1.0). Por defecto: `0.7`. |
-| `AI_TEMPERATURE_TITLE` | Temperatura de generación del título (0.0–1.0). Por defecto: `0.9`. |
+| Variable | Obligatoria | Por defecto | Descripción |
+|---|---|---|---|
+| `OPENAI_MODEL` | ✅ | `gpt-4o` | Modelo de IA a usar. Determina el proveedor: modelos `gpt-*` → OpenAI; modelos `gemini-*` → Google Gemini; cualquier modelo cuando `OLLAMA_BASE_URL` está definida → Ollama. |
+| `OPENAIAPIKEY` | ✅ si usas OpenAI | — | Clave de API de OpenAI (`sk-...`). [Crear API key](https://platform.openai.com/api-keys). No requerida con Gemini ni con Ollama. |
+| `GEMINI_API_KEY` | ✅ si usas Gemini | — | Clave de API de Google Gemini. [Obtener clave](https://aistudio.google.com/app/apikey). Necesaria cuando `OPENAI_MODEL` es un modelo `gemini-*`. |
+| `OLLAMA_BASE_URL` | ✅ si usas Ollama | — | URL base del servidor Ollama local (ej. `http://localhost:11434/v1`). Sin coste ni clave de API. |
+| `SITE` | ⚠️ recomendada | `""` | URL base de tu web **sin barra final** (ej. `https://tusitio.com`). Imprescindible para generar `canonicalUrl` y JSON-LD correctos. |
+| `AUTHOR_USERNAME` | ⚠️ recomendada | `adminUser` | Username o nombre del autor del artículo generado. |
+| `ARTICLE_LANGUAGE` | ⚠️ recomendada | `es` | Código ISO 639-1 del idioma. Valores: `es` `en` `fr` `de` `it` `pt` `nl` `pl` `ru` `zh` `ja` `ar`. |
+| `AI_TEMPERATURE_ARTICLE` | ❌ opcional | `0.7` | Creatividad del artículo (0.0 = determinista, 1.0 = muy creativo). |
+| `AI_TEMPERATURE_TITLE` | ❌ opcional | `0.9` | Creatividad del título (valor más alto → títulos más variados). |
+| `SMTP_HOST` | ❌ opcional | — | Servidor SMTP para notificaciones (ej. `smtp.gmail.com`). |
+| `SMTP_PORT` | ❌ opcional | `587` | Puerto SMTP. Habituales: `587` (STARTTLS), `465` (SSL). |
+| `SMTP_USER` | ❌ opcional | — | Usuario SMTP / dirección de correo del remitente. |
+| `SMTP_PASS` | ❌ opcional | — | Contraseña SMTP. Para Gmail, usa una [contraseña de aplicación](https://myaccount.google.com/apppasswords). |
+| `FROM_EMAIL` | ❌ opcional | valor de `SMTP_USER` | Dirección de origen del email de notificación. |
+| `NOTIFY_EMAIL` | ❌ opcional | — | Dirección de destino de las notificaciones. |
+| `NOTIFY_VERBOSE` | ❌ opcional | `true` | Enviar emails detallados (`true`/`false`). |
+| `SEND_PROMPT_EMAIL` | ❌ opcional | `false` | Enviar el prompt por email antes de llamar a la IA (útil para depuración). |
 
 ### 3. Crear el entorno virtual e instalar dependencias
 
@@ -130,6 +138,82 @@ El script:
 ```bash
 pip install pytest
 python -m pytest test_generateArticle.py test_seed_data.py -v
+```
+
+---
+
+## 🤖 Proveedores de IA
+
+El script soporta **tres proveedores de IA** que se seleccionan automáticamente mediante las variables de entorno. Solo necesitas configurar el proveedor que vayas a usar.
+
+### Comparativa de proveedores
+
+| Proveedor | Variable clave | Clave de API | Coste | Privacidad | Modelos destacados |
+|---|---|---|---|---|---|
+| **OpenAI (GPT)** | `OPENAIAPIKEY` | Sí (`sk-...`) | De pago por uso | Cloud | `gpt-4o`, `gpt-4-turbo`, `gpt-3.5-turbo` |
+| **Google Gemini** | `GEMINI_API_KEY` | Sí (`AIzaSy-...`) | Nivel gratuito disponible | Cloud | `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash` |
+| **Ollama (local)** | `OLLAMA_BASE_URL` | No necesaria | Gratuito (local) | 100% local | `llama3`, `mistral`, `codellama`, `gemma`, `phi3` |
+
+---
+
+### Opción A — OpenAI (GPT)
+
+1. Obtén tu clave en [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+2. Configura en tu `.env`:
+
+```dotenv
+OPENAI_MODEL=gpt-4o
+OPENAIAPIKEY=sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```
+
+Modelos disponibles: `gpt-4o` (recomendado) · `gpt-4-turbo` · `gpt-3.5-turbo`
+
+---
+
+### Opción B — Google Gemini
+
+1. Obtén tu clave en [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) (tiene nivel gratuito).
+2. Configura en tu `.env`:
+
+```dotenv
+OPENAI_MODEL=gemini-2.0-flash
+GEMINI_API_KEY=AIzaSy-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```
+
+Modelos disponibles: `gemini-2.0-flash` (rápido y gratuito) · `gemini-1.5-pro` · `gemini-1.5-flash`
+
+> **Nota:** `OPENAIAPIKEY` no se necesita cuando usas Gemini.
+
+---
+
+### Opción C — Ollama (LLM local, sin coste ni internet)
+
+Ollama te permite correr modelos de lenguaje completamente en tu máquina, sin enviar datos a ningún servidor externo y sin coste adicional.
+
+1. Instala Ollama desde [ollama.com](https://ollama.com).
+2. Descarga el modelo que quieras usar (solo la primera vez):
+
+```bash
+ollama pull llama3       # ~4 GB — recomendado para la mayoría de casos
+# ollama pull mistral    # alternativa más ligera
+# ollama pull codellama  # especializado en código
+# ollama pull gemma      # de Google, muy eficiente
+# ollama pull phi3       # de Microsoft, muy ligero
+```
+
+3. Configura en tu `.env`:
+
+```dotenv
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=llama3
+```
+
+> **Nota:** `OPENAIAPIKEY` y `GEMINI_API_KEY` **no se necesitan** con Ollama.
+
+4. Ejecuta el script normalmente:
+
+```bash
+python generateArticle.py --tag "JWT Authentication" --category "Spring Boot"
 ```
 
 ---

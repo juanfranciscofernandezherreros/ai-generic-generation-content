@@ -1,5 +1,4 @@
-# Runtime dependencies (unpinned).
-# Compile to requirements.txt with:
+# Runtime dependencies – edit here, then run:
 #   pip-compile requirements.in -o requirements.txt
 openai>=1.0.0
 python-dotenv>=1.0.0
