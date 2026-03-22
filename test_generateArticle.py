@@ -351,13 +351,13 @@ class TestBuildTitlePrompt:
 class TestSendNotificationEmailUtf8:
     """Verify that emails with non-ASCII (Spanish) characters are built without errors."""
 
-    @patch("generateArticle.SMTP_HOST", "smtp.example.com")
-    @patch("generateArticle.SMTP_PORT", 587)
-    @patch("generateArticle.SMTP_USER", "user@example.com")
-    @patch("generateArticle.SMTP_PASS", "secret")
-    @patch("generateArticle.FROM_EMAIL", "user@example.com")
-    @patch("generateArticle.TO_EMAIL", "dest@example.com")
-    @patch("generateArticle.smtplib.SMTP")
+    @patch("config.SMTP_HOST", "smtp.example.com")
+    @patch("config.SMTP_PORT", 587)
+    @patch("config.SMTP_USER", "user@example.com")
+    @patch("config.SMTP_PASS", "secret")
+    @patch("config.FROM_EMAIL", "user@example.com")
+    @patch("config.TO_EMAIL", "dest@example.com")
+    @patch("notifications.smtplib.SMTP")
     def test_utf8_subject_and_body(self, mock_smtp_cls):
         """Non-ASCII chars like á, é, ó, ñ must not raise 'ascii' codec errors."""
         mock_smtp = MagicMock()
@@ -381,13 +381,13 @@ class TestSendNotificationEmailUtf8:
         assert "Conexi" in decoded          # subject present
         assert "xico" in decoded or "xito" in decoded or "éxito" in decoded  # body accent preserved
 
-    @patch("generateArticle.SMTP_HOST", "smtp.example.com")
-    @patch("generateArticle.SMTP_PORT", 587)
-    @patch("generateArticle.SMTP_USER", "user@example.com")
-    @patch("generateArticle.SMTP_PASS", "secret")
-    @patch("generateArticle.FROM_EMAIL", "user@example.com")
-    @patch("generateArticle.TO_EMAIL", "dest@example.com")
-    @patch("generateArticle.smtplib.SMTP")
+    @patch("config.SMTP_HOST", "smtp.example.com")
+    @patch("config.SMTP_PORT", 587)
+    @patch("config.SMTP_USER", "user@example.com")
+    @patch("config.SMTP_PASS", "secret")
+    @patch("config.FROM_EMAIL", "user@example.com")
+    @patch("config.TO_EMAIL", "dest@example.com")
+    @patch("notifications.smtplib.SMTP")
     def test_smtp_uses_localhost_hostname(self, mock_smtp_cls):
         """SMTP must use local_hostname='localhost' to avoid non-ASCII FQDN encoding errors."""
         mock_smtp = MagicMock()
@@ -404,13 +404,13 @@ class TestSendNotificationEmailUtf8:
             "smtp.example.com", 587, local_hostname="localhost"
         )
 
-    @patch("generateArticle.SMTP_HOST", "smtp.example.com")
-    @patch("generateArticle.SMTP_PORT", 587)
-    @patch("generateArticle.SMTP_USER", "user@example.com")
-    @patch("generateArticle.SMTP_PASS", "secret")
-    @patch("generateArticle.FROM_EMAIL", "user@example.com")
-    @patch("generateArticle.TO_EMAIL", "dest@example.com")
-    @patch("generateArticle.smtplib.SMTP")
+    @patch("config.SMTP_HOST", "smtp.example.com")
+    @patch("config.SMTP_PORT", 587)
+    @patch("config.SMTP_USER", "user@example.com")
+    @patch("config.SMTP_PASS", "secret")
+    @patch("config.FROM_EMAIL", "user@example.com")
+    @patch("config.TO_EMAIL", "dest@example.com")
+    @patch("notifications.smtplib.SMTP")
     def test_subject_uses_smtp_policy_utf8_encoding(self, mock_smtp_cls):
         """Subject with non-ASCII must be properly encoded via SMTP policy (RFC 2047)."""
         mock_smtp = MagicMock()
@@ -431,13 +431,13 @@ class TestSendNotificationEmailUtf8:
         msg_bytes = msg.as_bytes()
         assert b"=?utf-8?" in msg_bytes.lower()
 
-    @patch("generateArticle.SMTP_HOST", "smtp.example.com")
-    @patch("generateArticle.SMTP_PORT", 587)
-    @patch("generateArticle.SMTP_USER", "user@example.com")
-    @patch("generateArticle.SMTP_PASS", "secreto-á")
-    @patch("generateArticle.FROM_EMAIL", "user@example.com")
-    @patch("generateArticle.TO_EMAIL", "dest@example.com")
-    @patch("generateArticle.smtplib.SMTP")
+    @patch("config.SMTP_HOST", "smtp.example.com")
+    @patch("config.SMTP_PORT", 587)
+    @patch("config.SMTP_USER", "user@example.com")
+    @patch("config.SMTP_PASS", "secreto-á")
+    @patch("config.FROM_EMAIL", "user@example.com")
+    @patch("config.TO_EMAIL", "dest@example.com")
+    @patch("notifications.smtplib.SMTP")
     def test_login_fallback_uses_auth_plain_utf8_when_ascii_login_fails(self, mock_smtp_cls):
         mock_smtp = MagicMock()
         mock_smtp.login.side_effect = UnicodeEncodeError("ascii", "á", 0, 1, "ordinal not in range(128)")
@@ -702,9 +702,9 @@ class TestMultiLanguagePrompts:
 class TestGenerateWithLangchain:
     """Tests for the LangChain-based text generation helper."""
 
-    @patch("generateArticle.ChatOpenAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
+    @patch("ai_providers.ChatOpenAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
     def test_returns_content_from_chain(self, mock_template, mock_parser, mock_llm):
         """_generate_with_langchain should return the string produced by the LCEL chain."""
         fake_chain = MagicMock()
@@ -716,9 +716,9 @@ class TestGenerateWithLangchain:
         result = _generate_with_langchain("system", "user prompt", max_tokens=100)
         assert result == '{"title":"T","summary":"S","body":"<h1>T</h1>","keywords":[]}'
 
-    @patch("generateArticle.ChatOpenAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
+    @patch("ai_providers.ChatOpenAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
     def test_raises_when_chain_returns_empty(self, mock_template, mock_parser, mock_llm):
         """_generate_with_langchain should raise RuntimeError when the chain returns empty string."""
         fake_chain = MagicMock()
@@ -729,14 +729,14 @@ class TestGenerateWithLangchain:
         with pytest.raises(RuntimeError):
             _generate_with_langchain("system", "user prompt", max_tokens=100)
 
-    @patch("generateArticle.ChatOpenAI")
+    @patch("ai_providers.ChatOpenAI")
     def test_llm_uses_correct_model_and_tokens(self, mock_llm_cls):
         """ChatOpenAI should be constructed with the configured model and max_tokens."""
         mock_llm_instance = MagicMock()
         mock_llm_cls.return_value = mock_llm_instance
 
-        with patch("generateArticle.ChatPromptTemplate") as mock_template, \
-             patch("generateArticle.StrOutputParser"):
+        with patch("ai_providers.ChatPromptTemplate") as mock_template, \
+             patch("ai_providers.StrOutputParser"):
             fake_chain = MagicMock()
             fake_chain.invoke.return_value = "some content"
             mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
@@ -761,7 +761,7 @@ _VALID_ARTICLE_JSON = json.dumps({
 class TestGenerateArticleWithAILangchain:
     """Tests for generate_article_with_ai using the LangChain primary path."""
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
     def test_uses_langchain_primary_path(self, mock_lc):
         """When LangChain succeeds the OpenAI SDK should not be called."""
         mock_client = MagicMock()
@@ -771,27 +771,27 @@ class TestGenerateArticleWithAILangchain:
         mock_lc.assert_called_once()
         mock_client.chat.completions.create.assert_not_called()
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
     def test_returns_tuple_of_four(self, mock_lc):
         mock_client = MagicMock()
         result = generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
         assert len(result) == 4
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
     def test_title_and_body_populated(self, mock_lc):
         mock_client = MagicMock()
         title, summary, body, keywords = generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
         assert title == "Cómo usar Spring Boot"
         assert "<h1>" in body
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
     def test_keywords_returned_as_list(self, mock_lc):
         mock_client = MagicMock()
         _, _, _, keywords = generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
         assert isinstance(keywords, list)
         assert "spring boot" in keywords
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
     def test_h1_injected_when_missing_in_body(self, mock_lc):
         """If the body from the model lacks <h1>, one is prepended from the title."""
         json_no_h1 = json.dumps({
@@ -805,7 +805,7 @@ class TestGenerateArticleWithAILangchain:
         _, _, body, _ = generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
         assert body.startswith("<h1>Mi título</h1>")
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain error"))
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("LangChain error"))
     def test_falls_back_to_openai_sdk_on_langchain_failure(self, mock_lc):
         """When LangChain raises, the OpenAI SDK fallback must be invoked."""
         mock_client = MagicMock()
@@ -816,7 +816,7 @@ class TestGenerateArticleWithAILangchain:
         assert title == "Cómo usar Spring Boot"
         mock_client.chat.completions.create.assert_called_once()
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("fail"))
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("fail"))
     def test_raises_if_both_langchain_and_sdk_fail(self, mock_lc):
         """RuntimeError is raised when both LangChain and the OpenAI SDK fallback fail."""
         mock_client = MagicMock()
@@ -824,7 +824,7 @@ class TestGenerateArticleWithAILangchain:
         with pytest.raises(RuntimeError):
             generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
 
-    @patch("generateArticle._generate_with_langchain", return_value='{"title":"","body":"","summary":"","keywords":[]}')
+    @patch("article_generator._generate_with_langchain", return_value='{"title":"","body":"","summary":"","keywords":[]}')
     def test_raises_on_empty_title_or_body(self, mock_lc):
         """ValueError raised when the model returns empty title or body."""
         mock_client = MagicMock()
@@ -836,7 +836,7 @@ class TestGenerateArticleWithAILangchain:
 class TestGenerateTitleWithAILangchain:
     """Tests for generate_title_with_ai using the LangChain primary path."""
 
-    @patch("generateArticle._generate_with_langchain", return_value="Título generado con LangChain")
+    @patch("article_generator._generate_with_langchain", return_value="Título generado con LangChain")
     def test_uses_langchain_primary_path(self, mock_lc):
         """When LangChain succeeds the OpenAI SDK should not be called."""
         mock_client = MagicMock()
@@ -844,7 +844,7 @@ class TestGenerateTitleWithAILangchain:
         mock_lc.assert_called_once()
         mock_client.chat.completions.create.assert_not_called()
 
-    @patch("generateArticle._generate_with_langchain", return_value='  "Mi Título"  ')
+    @patch("article_generator._generate_with_langchain", return_value='  "Mi Título"  ')
     def test_strips_whitespace_and_quotes(self, mock_lc):
         """generate_title_with_ai strips surrounding whitespace and ASCII quote characters."""
         mock_client = MagicMock()
@@ -854,13 +854,13 @@ class TestGenerateTitleWithAILangchain:
         assert not title.startswith('"')
         assert not title.endswith('"')
 
-    @patch("generateArticle._generate_with_langchain", return_value="A" * 200)
+    @patch("article_generator._generate_with_langchain", return_value="A" * 200)
     def test_truncates_to_meta_title_max_length(self, mock_lc):
         mock_client = MagicMock()
         title = generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
         assert len(title) <= META_TITLE_MAX_LENGTH
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain error"))
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("LangChain error"))
     def test_falls_back_to_openai_sdk_on_langchain_failure(self, mock_lc):
         """When LangChain raises, the OpenAI SDK fallback must be invoked."""
         mock_client = MagicMock()
@@ -871,7 +871,7 @@ class TestGenerateTitleWithAILangchain:
         assert "Título fallback" in title
         mock_client.chat.completions.create.assert_called_once()
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("fail"))
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("fail"))
     def test_raises_if_both_langchain_and_sdk_fail(self, mock_lc):
         """RuntimeError is raised when both LangChain and the OpenAI SDK fallback fail."""
         mock_client = MagicMock()
@@ -910,10 +910,10 @@ class TestIsGeminiModel:
 class TestGenerateWithLangchainGemini:
     """Tests for _generate_with_langchain when a Gemini model is configured."""
 
-    @patch("generateArticle.ChatGoogleGenerativeAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
-    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    @patch("ai_providers.ChatGoogleGenerativeAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
+    @patch("config.OPENAI_MODEL", "gemini-1.5-flash")
     def test_uses_google_llm_for_gemini_model(self, mock_template, mock_parser, mock_google_llm):
         """ChatGoogleGenerativeAI should be used when the model is a Gemini model."""
         fake_chain = MagicMock()
@@ -925,13 +925,13 @@ class TestGenerateWithLangchainGemini:
         mock_google_llm.assert_called_once()
         assert result == "Gemini response"
 
-    @patch("generateArticle.ChatOpenAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
-    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    @patch("ai_providers.ChatOpenAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
+    @patch("config.OPENAI_MODEL", "gemini-1.5-flash")
     def test_does_not_use_openai_llm_for_gemini_model(self, mock_template, mock_parser, mock_openai_llm):
         """ChatOpenAI should NOT be instantiated when the model is a Gemini model."""
-        with patch("generateArticle.ChatGoogleGenerativeAI"):
+        with patch("ai_providers.ChatGoogleGenerativeAI"):
             fake_chain = MagicMock()
             fake_chain.invoke.return_value = "Gemini response"
             mock_template.from_messages.return_value.__or__ = MagicMock(return_value=MagicMock(
@@ -940,10 +940,10 @@ class TestGenerateWithLangchainGemini:
             _generate_with_langchain("system", "user prompt", max_tokens=100)
         mock_openai_llm.assert_not_called()
 
-    @patch("generateArticle.ChatGoogleGenerativeAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
-    @patch("generateArticle.OPENAI_MODEL", "gemini-2.0-flash")
+    @patch("ai_providers.ChatGoogleGenerativeAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
+    @patch("config.OPENAI_MODEL", "gemini-2.0-flash")
     def test_gemini_llm_receives_max_output_tokens(self, mock_template, mock_parser, mock_google_llm):
         """ChatGoogleGenerativeAI should receive max_output_tokens (not max_tokens)."""
         mock_llm_instance = MagicMock()
@@ -964,19 +964,19 @@ class TestGenerateWithLangchainGemini:
 class TestIsOllamaProvider:
     """Tests for the _is_ollama_provider helper."""
 
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
     def test_true_when_url_set(self):
         assert _is_ollama_provider() is True
 
-    @patch("generateArticle.OLLAMA_BASE_URL", None)
+    @patch("config.OLLAMA_BASE_URL", None)
     def test_false_when_url_none(self):
         assert _is_ollama_provider() is False
 
-    @patch("generateArticle.OLLAMA_BASE_URL", "")
+    @patch("config.OLLAMA_BASE_URL", "")
     def test_false_when_url_empty(self):
         assert _is_ollama_provider() is False
 
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://192.168.1.50:11434/v1")
+    @patch("config.OLLAMA_BASE_URL", "http://192.168.1.50:11434/v1")
     def test_true_with_custom_host(self):
         assert _is_ollama_provider() is True
 
@@ -985,11 +985,11 @@ class TestIsOllamaProvider:
 class TestGenerateWithLangchainOllama:
     """Tests for _generate_with_langchain when Ollama is configured."""
 
-    @patch("generateArticle.ChatOpenAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    @patch("ai_providers.ChatOpenAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("config.OPENAI_MODEL", "llama3")
     def test_uses_chat_openai_with_base_url_for_ollama(self, mock_template, mock_parser, mock_llm):
         """ChatOpenAI should be constructed with base_url when Ollama is configured."""
         mock_llm_instance = MagicMock()
@@ -1006,11 +1006,11 @@ class TestGenerateWithLangchainOllama:
         assert call_kwargs["api_key"] == OLLAMA_PLACEHOLDER_API_KEY
         assert result == "Ollama response"
 
-    @patch("generateArticle.ChatOpenAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    @patch("generateArticle.OPENAI_MODEL", "mistral")
+    @patch("ai_providers.ChatOpenAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("config.OPENAI_MODEL", "mistral")
     def test_ollama_llm_receives_max_tokens_and_temperature(self, mock_template, mock_parser, mock_llm):
         """ChatOpenAI for Ollama should receive max_tokens and temperature."""
         mock_llm_instance = MagicMock()
@@ -1025,12 +1025,12 @@ class TestGenerateWithLangchainOllama:
         assert call_kwargs["max_tokens"] == 512
         assert call_kwargs["temperature"] == 0.5
 
-    @patch("generateArticle.ChatGoogleGenerativeAI")
-    @patch("generateArticle.ChatOpenAI")
-    @patch("generateArticle.StrOutputParser")
-    @patch("generateArticle.ChatPromptTemplate")
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    @patch("ai_providers.ChatGoogleGenerativeAI")
+    @patch("ai_providers.ChatOpenAI")
+    @patch("ai_providers.StrOutputParser")
+    @patch("ai_providers.ChatPromptTemplate")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("config.OPENAI_MODEL", "llama3")
     def test_ollama_does_not_use_google_llm(self, mock_template, mock_parser, mock_openai_llm, mock_google_llm):
         """ChatGoogleGenerativeAI should NOT be used when Ollama is configured."""
         fake_chain = MagicMock()
@@ -1079,9 +1079,9 @@ class TestMainCliOllama:
 class TestOllamaNoGeminiInterference:
     """When Ollama is configured with a non-Gemini model, Gemini paths should not activate."""
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("config.OPENAI_MODEL", "llama3")
     def test_article_uses_sdk_fallback_for_ollama(self, mock_lc):
         """For Ollama, OpenAI SDK fallback should be used when LangChain fails."""
         mock_client = MagicMock()
@@ -1092,9 +1092,9 @@ class TestOllamaNoGeminiInterference:
         assert title == "Cómo usar Spring Boot"
         mock_client.chat.completions.create.assert_called_once()
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
-    @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    @patch("config.OPENAI_MODEL", "llama3")
     def test_title_uses_sdk_fallback_for_ollama(self, mock_lc):
         """For Ollama, OpenAI SDK fallback should be used when LangChain fails."""
         mock_client = MagicMock()
@@ -1119,7 +1119,7 @@ class TestLLMChain:
         mock_prompt.__or__ = MagicMock(return_value=MagicMock(
             __or__=MagicMock(return_value=fake_inner_chain)
         ))
-        with patch("generateArticle.StrOutputParser"):
+        with patch("ai_providers.StrOutputParser"):
             chain = LLMChain(llm=mock_llm, prompt=mock_prompt)
             result = chain.run(user_prompt="test input")
         assert result == "generated content"
@@ -1134,7 +1134,7 @@ class TestLLMChain:
         mock_prompt.__or__ = MagicMock(return_value=MagicMock(
             __or__=MagicMock(return_value=fake_inner_chain)
         ))
-        with patch("generateArticle.StrOutputParser"):
+        with patch("ai_providers.StrOutputParser"):
             chain = LLMChain(llm=mock_llm, prompt=mock_prompt)
             result = chain.invoke({"user_prompt": "test input"})
         assert result == "invoked content"
@@ -1148,7 +1148,7 @@ class TestLLMChain:
         mock_prompt.__or__ = MagicMock(return_value=MagicMock(
             __or__=MagicMock(return_value=fake_inner_chain)
         ))
-        with patch("generateArticle.StrOutputParser"):
+        with patch("ai_providers.StrOutputParser"):
             chain = LLMChain(llm=mock_llm, prompt=mock_prompt)
             result_run = chain.run(user_prompt="text")
             result_invoke = chain.invoke({"user_prompt": "text"})
@@ -1163,7 +1163,7 @@ class TestLLMChain:
         mock_full_chain.invoke.return_value = "ok"
         mock_prompt.__or__ = MagicMock(return_value=mock_prompt_llm)
         mock_prompt_llm.__or__ = MagicMock(return_value=mock_full_chain)
-        with patch("generateArticle.StrOutputParser") as mock_parser:
+        with patch("ai_providers.StrOutputParser") as mock_parser:
             LLMChain(llm=mock_llm, prompt=mock_prompt)
         mock_prompt.__or__.assert_called_once_with(mock_llm)
         mock_prompt_llm.__or__.assert_called_once_with(mock_parser.return_value)
@@ -1173,8 +1173,8 @@ class TestLLMChain:
 class TestTemperatureConstants:
     """Tests that configurable temperature constants are used in generation calls."""
 
-    @patch("generateArticle._generate_with_langchain", return_value='{"title":"T","summary":"S","body":"<h1>T</h1>","keywords":[]}')
-    @patch("generateArticle.AI_TEMPERATURE_ARTICLE", 0.3)
+    @patch("article_generator._generate_with_langchain", return_value='{"title":"T","summary":"S","body":"<h1>T</h1>","keywords":[]}')
+    @patch("config.AI_TEMPERATURE_ARTICLE", 0.3)
     def test_article_uses_ai_temperature_article(self, mock_lc):
         """generate_article_with_ai should pass AI_TEMPERATURE_ARTICLE to _generate_with_langchain."""
         mock_client = MagicMock()
@@ -1182,8 +1182,8 @@ class TestTemperatureConstants:
         _, call_kwargs = mock_lc.call_args
         assert call_kwargs["temperature"] == 0.3
 
-    @patch("generateArticle._generate_with_langchain", return_value="Título generado")
-    @patch("generateArticle.AI_TEMPERATURE_TITLE", 0.2)
+    @patch("article_generator._generate_with_langchain", return_value="Título generado")
+    @patch("config.AI_TEMPERATURE_TITLE", 0.2)
     def test_title_uses_ai_temperature_title(self, mock_lc):
         """generate_title_with_ai should pass AI_TEMPERATURE_TITLE to _generate_with_langchain."""
         mock_client = MagicMock()
@@ -1196,8 +1196,8 @@ class TestTemperatureConstants:
 class TestGeminiNoOpenAIFallback:
     """When a Gemini model is configured, the OpenAI SDK fallback must not be called."""
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
-    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("config.OPENAI_MODEL", "gemini-1.5-flash")
     def test_article_raises_without_openai_fallback_for_gemini(self, mock_lc):
         """For Gemini models, RuntimeError is raised when LangChain fails (no OpenAI SDK fallback)."""
         mock_client = MagicMock()
@@ -1205,8 +1205,8 @@ class TestGeminiNoOpenAIFallback:
             generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
         mock_client.chat.completions.create.assert_not_called()
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
-    @patch("generateArticle.OPENAI_MODEL", "gemini-1.5-flash")
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("LangChain fail"))
+    @patch("config.OPENAI_MODEL", "gemini-1.5-flash")
     def test_title_raises_without_openai_fallback_for_gemini(self, mock_lc):
         """For Gemini models, RuntimeError is raised when LangChain fails (no OpenAI SDK fallback)."""
         mock_client = MagicMock()
@@ -1227,7 +1227,7 @@ _VALID_JSON = json.dumps({
 class TestGenerateAndSaveArticle:
     """Tests for generate_and_save_article: JSON output and document structure."""
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_returns_true_on_success(self, mock_lc):
         """generate_and_save_article returns True when the article is successfully saved."""
         mock_client = MagicMock()
@@ -1242,7 +1242,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_creates_json_file(self, mock_lc):
         """generate_and_save_article writes a valid JSON file to the given output path."""
         mock_client = MagicMock()
@@ -1260,7 +1260,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_json_contains_required_fields(self, mock_lc):
         """The exported JSON must contain all required article fields."""
         mock_client = MagicMock()
@@ -1280,7 +1280,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_tag_stored_as_string(self, mock_lc):
         """Tags in the JSON output are stored as strings, not ObjectIds."""
         mock_client = MagicMock()
@@ -1299,7 +1299,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_category_stored_as_string(self, mock_lc):
         """Category in the JSON output is stored as a string, not an ObjectId."""
         mock_client = MagicMock()
@@ -1317,7 +1317,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_author_passed_correctly(self, mock_lc):
         """The author name passed as argument is stored in the JSON document."""
         mock_client = MagicMock()
@@ -1335,7 +1335,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_slug_derived_from_title(self, mock_lc):
         """The slug in the JSON is derived from the article title."""
         mock_client = MagicMock()
@@ -1352,7 +1352,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_structured_data_is_schema_org(self, mock_lc):
         """The structuredData field must conform to Schema.org TechArticle."""
         mock_client = MagicMock()
@@ -1371,7 +1371,7 @@ class TestGenerateAndSaveArticle:
         finally:
             os.unlink(path)
 
-    @patch("generateArticle._generate_with_langchain", side_effect=RuntimeError("AI fail"))
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("AI fail"))
     def test_raises_on_ai_failure(self, mock_lc):
         """generate_and_save_article raises RuntimeError when AI generation fails."""
         mock_client = MagicMock()
@@ -1382,7 +1382,7 @@ class TestGenerateAndSaveArticle:
                 output_path="/tmp/should_not_be_created.json",
             )
 
-    @patch("generateArticle._generate_with_langchain", return_value=_VALID_JSON)
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_JSON)
     def test_json_is_utf8_encoded(self, mock_lc):
         """The JSON file must be valid UTF-8 and non-ASCII chars appear unescaped."""
         mock_client = MagicMock()
