@@ -74,6 +74,7 @@ Abre `.env` con tu editor y configura el proveedor de IA que quieras usar (ver s
 | `OPENAIAPIKEY` | ✅ si usas OpenAI | — | Clave de API de OpenAI (`sk-...`). [Crear API key](https://platform.openai.com/api-keys). No requerida con Gemini ni con Ollama. |
 | `GEMINI_API_KEY` | ✅ si usas Gemini | — | Clave de API de Google Gemini. [Obtener clave](https://aistudio.google.com/app/apikey). Necesaria cuando `OPENAI_MODEL` es un modelo `gemini-*`. |
 | `OLLAMA_BASE_URL` | ✅ si usas Ollama | — | URL base del servidor Ollama local (ej. `http://localhost:11434/v1`). Sin coste ni clave de API. |
+| `AI_PROVIDER` | ❌ opcional | `auto` | Proveedor de IA explícito: `auto`, `openai`, `gemini` u `ollama`. Permite elegir proveedor cuando se tienen varias claves configuradas. También configurable con `--provider` en CLI. |
 | `SITE` | ⚠️ recomendada | `""` | URL base de tu web **sin barra final** (ej. `https://tusitio.com`). Imprescindible para generar `canonicalUrl` y JSON-LD correctos. |
 | `AUTHOR_USERNAME` | ⚠️ recomendada | `adminUser` | Username o nombre del autor del artículo generado. |
 | `ARTICLE_LANGUAGE` | ⚠️ recomendada | `es` | Código ISO 639-1 del idioma. Valores: `es` `en` `fr` `de` `it` `pt` `nl` `pl` `ru` `zh` `ja` `ar`. |
@@ -157,6 +158,8 @@ python -m pytest test_generateArticle.py test_seed_data.py -v
 
 El script soporta **tres proveedores de IA** que se seleccionan automáticamente mediante las variables de entorno. Solo necesitas configurar el proveedor que vayas a usar.
 
+> **💡 ¿Tienes varias claves configuradas?** Usa `AI_PROVIDER` en `.env` o `--provider` en CLI para elegir explícitamente qué proveedor utilizar (ver [Selección explícita de proveedor](#selección-explícita-de-proveedor) más abajo).
+
 ### Comparativa de proveedores
 
 | Proveedor | Variable clave | Clave de API | Coste | Privacidad | Modelos destacados |
@@ -225,6 +228,31 @@ OPENAI_MODEL=llama3
 
 ```bash
 python generateArticle.py --tag "JWT Authentication" --category "Spring Boot"
+```
+
+---
+
+### Selección explícita de proveedor
+
+Si tienes varias claves de API configuradas simultáneamente (por ejemplo, `OPENAIAPIKEY` y `GEMINI_API_KEY`), puedes usar `AI_PROVIDER` para elegir qué proveedor utilizar sin tener que cambiar `OPENAI_MODEL`:
+
+| `AI_PROVIDER` | Comportamiento |
+|---|---|
+| `auto` (por defecto) | Detecta por nombre del modelo (`gemini-*` → Gemini) y `OLLAMA_BASE_URL` |
+| `openai` | Fuerza OpenAI/ChatGPT |
+| `gemini` | Fuerza Google Gemini |
+| `ollama` | Fuerza Ollama |
+
+**Desde `.env`:**
+
+```dotenv
+AI_PROVIDER=gemini
+```
+
+**Desde CLI (sobreescribe el `.env`):**
+
+```bash
+python generateArticle.py --provider gemini --tag "JWT" --category "Spring Boot"
 ```
 
 ---

@@ -50,6 +50,7 @@ El script carga su configuración desde un fichero `.env` en el mismo directorio
 | `GEMINI_API_KEY` | ✅ (si modelo Gemini) | Clave de API de Google Gemini |
 | `OLLAMA_BASE_URL` | ✅ (si Ollama) | URL del servidor Ollama local (ej. `http://localhost:11434/v1`). Cuando se establece, no se requiere `OPENAIAPIKEY` |
 | `OPENAI_MODEL` | ❌ | Modelo a usar (por defecto `gpt-4o`). Si empieza por `gemini-`, usa Gemini. Si `OLLAMA_BASE_URL` está definida, usa Ollama |
+| `AI_PROVIDER` | ❌ | Proveedor de IA explícito: `auto` (por defecto), `openai`, `gemini` u `ollama`. Permite elegir proveedor cuando se tienen varias claves configuradas |
 | `AUTHOR_USERNAME` | ❌ | Nombre del autor de los artículos (por defecto `adminUser`) |
 | `SITE` | ❌ | URL base de la web (ej. `https://tusitio.com`). Necesaria para URLs canónicas |
 | `ARTICLE_LANGUAGE` | ❌ | Código ISO 639-1 del idioma (por defecto `es`) |
@@ -344,6 +345,25 @@ El script soporta tres proveedores de IA según la configuración:
 | `llama3`, `mistral`, `codellama`, etc. | Ollama (local) | `OLLAMA_BASE_URL` |
 
 > **Ollama**: Cuando `OLLAMA_BASE_URL` está definida (p. ej. `http://localhost:11434/v1`), el script usa el servidor local de Ollama a través de la API compatible con OpenAI. No requiere clave de API.
+
+### Selección explícita de proveedor (`AI_PROVIDER`)
+
+Si se tienen varias claves de API configuradas simultáneamente (por ejemplo, `OPENAIAPIKEY` y `GEMINI_API_KEY`), se puede seleccionar el proveedor de IA mediante la variable de entorno `AI_PROVIDER` o el argumento CLI `--provider`:
+
+| Valor | Comportamiento |
+|---|---|
+| `auto` (por defecto) | Detecta el proveedor automáticamente por el nombre del modelo (`gemini-*` → Gemini) y `OLLAMA_BASE_URL` |
+| `openai` | Fuerza el uso de OpenAI/ChatGPT independientemente del nombre del modelo |
+| `gemini` | Fuerza el uso de Google Gemini independientemente del nombre del modelo |
+| `ollama` | Fuerza el uso de Ollama independientemente del nombre del modelo |
+
+```bash
+# Ejemplo: usar Gemini aunque el modelo no empiece por "gemini-"
+AI_PROVIDER=gemini python generateArticle.py --category "Spring Boot" --tag "JWT"
+
+# O con el argumento CLI --provider
+python generateArticle.py --category "Spring Boot" --tag "JWT" --provider gemini
+```
 
 ### System message (contexto del modelo)
 

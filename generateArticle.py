@@ -25,6 +25,7 @@ from openai import OpenAI
 
 # ── Re-exportar todos los símbolos públicos de los submódulos ──────────
 from config import (  # noqa: F401
+    AI_PROVIDER,
     ARTICLE_LANGUAGE,
     AI_TEMPERATURE_ARTICLE,
     AI_TEMPERATURE_TITLE,
@@ -135,9 +136,19 @@ def main():
                         help="Código de idioma ISO 639-1 (p. ej. es, en, fr)")
     parser.add_argument("--title", "-T", default=None,
                         help="Título del artículo (si se omite, se genera con IA)")
+    parser.add_argument("--provider", "-p",
+                        choices=["auto", "openai", "gemini", "ollama"],
+                        default=None,
+                        help="Proveedor de IA a usar (auto detecta por modelo/URL). "
+                             "También configurable con AI_PROVIDER en .env")
     parser.add_argument("--avoid-titles", default="",
                         help="Títulos a evitar, separados por ';'")
     args = parser.parse_args()
+
+    # Aplicar el proveedor de IA seleccionado por CLI (sobreescribe AI_PROVIDER del .env)
+    if args.provider is not None:
+        import config as _cfg
+        _cfg.AI_PROVIDER = args.provider
 
     avoid_titles = [t.strip() for t in args.avoid_titles.split(";") if t.strip()] if args.avoid_titles else []
 
@@ -145,7 +156,7 @@ def main():
 
     # Validar que la clave de API esté disponible
     using_gemini = _is_gemini_model(OPENAI_MODEL)
-    using_ollama = bool(OLLAMA_BASE_URL)
+    using_ollama = _is_ollama_provider()
     if using_ollama:
         pass  # Ollama no requiere clave de API
     elif using_gemini:

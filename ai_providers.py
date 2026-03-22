@@ -38,12 +38,32 @@ def _safe_json_loads(s: str) -> dict:
         return json.loads(s2)
 
 def _is_gemini_model(model: str) -> bool:
-    """Devuelve True si el nombre de modelo corresponde a un modelo de Google Gemini."""
+    """Devuelve True si el proveedor es Google Gemini.
+
+    Cuando ``AI_PROVIDER`` está definido como ``"gemini"`` se fuerza Gemini.
+    Cuando es ``"openai"`` u ``"ollama"`` se descarta Gemini.
+    Con ``"auto"`` (por defecto) se detecta por el nombre del modelo.
+    """
+    provider = config.AI_PROVIDER
+    if provider == "gemini":
+        return True
+    if provider in ("openai", "ollama"):
+        return False
     return model.lower().startswith("gemini")
 
 
 def _is_ollama_provider() -> bool:
-    """Devuelve True si se ha configurado OLLAMA_BASE_URL para usar un servidor Ollama local."""
+    """Devuelve True si el proveedor es Ollama (servidor local).
+
+    Cuando ``AI_PROVIDER`` está definido como ``"ollama"`` se fuerza Ollama.
+    Cuando es ``"openai"`` o ``"gemini"`` se descarta Ollama.
+    Con ``"auto"`` (por defecto) se detecta por ``OLLAMA_BASE_URL``.
+    """
+    provider = config.AI_PROVIDER
+    if provider == "ollama":
+        return True
+    if provider in ("openai", "gemini"):
+        return False
     return bool(config.OLLAMA_BASE_URL)
 
 

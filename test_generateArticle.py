@@ -1020,6 +1020,143 @@ class TestIsOllamaProvider:
         assert _is_ollama_provider() is True
 
 
+# ---- AI_PROVIDER explicit selection ----
+class TestAIProviderExplicit:
+    """Tests for explicit AI_PROVIDER selection overriding auto-detection."""
+
+    # -- _is_gemini_model with AI_PROVIDER --
+
+    @patch("config.AI_PROVIDER", "gemini")
+    def test_gemini_forced_with_gpt_model(self):
+        """AI_PROVIDER=gemini forces Gemini even when the model name is a GPT model."""
+        assert _is_gemini_model("gpt-4o") is True
+
+    @patch("config.AI_PROVIDER", "openai")
+    def test_openai_forced_with_gemini_model(self):
+        """AI_PROVIDER=openai overrides gemini model name detection."""
+        assert _is_gemini_model("gemini-1.5-flash") is False
+
+    @patch("config.AI_PROVIDER", "ollama")
+    def test_ollama_forced_rejects_gemini(self):
+        """AI_PROVIDER=ollama means _is_gemini_model returns False."""
+        assert _is_gemini_model("gemini-2.0-flash") is False
+
+    @patch("config.AI_PROVIDER", "auto")
+    def test_auto_detects_gemini_by_model_name(self):
+        """AI_PROVIDER=auto falls back to model-name detection for Gemini."""
+        assert _is_gemini_model("gemini-1.5-pro") is True
+
+    @patch("config.AI_PROVIDER", "auto")
+    def test_auto_does_not_detect_gpt_as_gemini(self):
+        """AI_PROVIDER=auto correctly rejects non-Gemini model names."""
+        assert _is_gemini_model("gpt-4o") is False
+
+    # -- _is_ollama_provider with AI_PROVIDER --
+
+    @patch("config.AI_PROVIDER", "ollama")
+    @patch("config.OLLAMA_BASE_URL", None)
+    def test_ollama_forced_even_without_url(self):
+        """AI_PROVIDER=ollama forces Ollama even when OLLAMA_BASE_URL is not set."""
+        assert _is_ollama_provider() is True
+
+    @patch("config.AI_PROVIDER", "openai")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    def test_openai_forced_rejects_ollama(self):
+        """AI_PROVIDER=openai overrides OLLAMA_BASE_URL detection."""
+        assert _is_ollama_provider() is False
+
+    @patch("config.AI_PROVIDER", "gemini")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    def test_gemini_forced_rejects_ollama(self):
+        """AI_PROVIDER=gemini overrides OLLAMA_BASE_URL detection."""
+        assert _is_ollama_provider() is False
+
+    @patch("config.AI_PROVIDER", "auto")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    def test_auto_detects_ollama_by_url(self):
+        """AI_PROVIDER=auto falls back to OLLAMA_BASE_URL detection."""
+        assert _is_ollama_provider() is True
+
+    @patch("config.AI_PROVIDER", "auto")
+    @patch("config.OLLAMA_BASE_URL", None)
+    def test_auto_does_not_detect_ollama_without_url(self):
+        """AI_PROVIDER=auto correctly rejects Ollama when URL is not set."""
+        assert _is_ollama_provider() is False
+
+
+class TestMainCliProviderArg:
+    """Tests for the --provider CLI argument in main()."""
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_provider_openai_sets_config(self, mock_openai_cls, mock_gen):
+        """--provider openai should set config.AI_PROVIDER to 'openai'."""
+        import sys
+
+        import config as _cfg
+        from generateArticle import main
+        original = _cfg.AI_PROVIDER
+        try:
+            with patch.object(sys, "argv", [
+                "generateArticle.py",
+                "--category", "Spring Boot",
+                "--tag", "Lombok",
+                "--provider", "openai",
+            ]):
+                main()
+            assert _cfg.AI_PROVIDER == "openai"
+        finally:
+            _cfg.AI_PROVIDER = original
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.GEMINI_API_KEY", "fake-gemini-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    @patch("config.AI_PROVIDER", "auto")
+    def test_provider_gemini_sets_config(self, mock_gen):
+        """--provider gemini should set config.AI_PROVIDER to 'gemini'."""
+        import sys
+
+        import config as _cfg
+        from generateArticle import main
+        original = _cfg.AI_PROVIDER
+        try:
+            with patch.object(sys, "argv", [
+                "generateArticle.py",
+                "--category", "Spring Boot",
+                "--tag", "Lombok",
+                "--provider", "gemini",
+            ]):
+                main()
+            assert _cfg.AI_PROVIDER == "gemini"
+        finally:
+            _cfg.AI_PROVIDER = original
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAI_MODEL", "llama3")
+    @patch("config.AI_PROVIDER", "auto")
+    def test_provider_ollama_sets_config(self, mock_openai_cls, mock_gen):
+        """--provider ollama should set config.AI_PROVIDER to 'ollama'."""
+        import sys
+
+        import config as _cfg
+        from generateArticle import main
+        original = _cfg.AI_PROVIDER
+        try:
+            with patch.object(sys, "argv", [
+                "generateArticle.py",
+                "--category", "Spring Boot",
+                "--tag", "Lombok",
+                "--provider", "ollama",
+            ]):
+                main()
+            assert _cfg.AI_PROVIDER == "ollama"
+        finally:
+            _cfg.AI_PROVIDER = original
+
+
 # ---- _generate_with_langchain with Ollama ----
 class TestGenerateWithLangchainOllama:
     """Tests for _generate_with_langchain when Ollama is configured."""
@@ -1087,6 +1224,7 @@ class TestMainCliOllama:
 
     @patch("generateArticle.generate_and_save_article", return_value=True)
     @patch("generateArticle.OpenAI")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
     @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
     @patch("generateArticle.OPENAIAPIKEY", "")
     @patch("generateArticle.OPENAI_MODEL", "llama3")
@@ -1101,6 +1239,7 @@ class TestMainCliOllama:
 
     @patch("generateArticle.generate_and_save_article", return_value=True)
     @patch("generateArticle.OpenAI")
+    @patch("config.OLLAMA_BASE_URL", "http://localhost:11434/v1")
     @patch("generateArticle.OLLAMA_BASE_URL", "http://localhost:11434/v1")
     @patch("generateArticle.OPENAIAPIKEY", "")
     @patch("generateArticle.OPENAI_MODEL", "llama3")

@@ -24,6 +24,8 @@ GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")  # p. ej. http://localhost:11434/v1
 AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME") or "adminUser"
 OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-4o")
+# Proveedor de IA explícito: "openai", "gemini", "ollama" o "auto" (detección automática por modelo/URL)
+AI_PROVIDER     = os.getenv("AI_PROVIDER", "auto").lower().strip()
 
 # Notificaciones
 SEND_EMAILS = (os.getenv("SEND_EMAILS", "true").lower() in ("1", "true", "yes", "y"))
