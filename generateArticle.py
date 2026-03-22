@@ -15,7 +15,7 @@ import time as _time
 import unicodedata
 from collections.abc import Callable
 from datetime import datetime, timezone
-from email.header import Header
+from email import policy as _email_policy
 from email.message import EmailMessage
 from typing import Any, Union
 
@@ -256,8 +256,8 @@ def send_notification_email(subject: str, html_body: str, text_body: str = None)
         print("⚠️  Faltan variables SMTP para enviar el correo. Se omite el envío.")
         return False
     try:
-        msg = EmailMessage()
-        msg["Subject"] = str(Header(subject, "utf-8"))
+        msg = EmailMessage(policy=_email_policy.SMTP)
+        msg["Subject"] = subject
         msg["From"] = FROM_EMAIL
         msg["To"] = TO_EMAIL
         text_body = text_body or "Notificación del proceso."
@@ -267,6 +267,7 @@ def send_notification_email(subject: str, html_body: str, text_body: str = None)
                           local_hostname="localhost") as smtp:
             smtp.ehlo()
             smtp.starttls()
+            smtp.ehlo()
             try:
                 smtp.login(SMTP_USER, SMTP_PASS)
             except UnicodeEncodeError:
@@ -293,7 +294,7 @@ def notify(subject: str, message: str, level: str = "info", always_email: bool =
     print(line)
     should_email = always_email or NOTIFY_VERBOSE or (level in ("error","warning"))
     if should_email:
-        html = f"<p><b>{subject}</b></p><p>{message}</p><p><small>{stamp} UTC</small></p>"
+        html = f"<p><b>{html_escape(subject)}</b></p><p>{html_escape(message)}</p><p><small>{stamp} UTC</small></p>"
         send_notification_email(subject=f"[{level.upper()}] {subject}", html_body=html, text_body=f"{subject}\n\n{message}\n\n{stamp} UTC")
 
 # ========= Retry con back-off exponencial =========

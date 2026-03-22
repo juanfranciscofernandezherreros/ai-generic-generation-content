@@ -411,8 +411,8 @@ class TestSendNotificationEmailUtf8:
     @patch("generateArticle.FROM_EMAIL", "user@example.com")
     @patch("generateArticle.TO_EMAIL", "dest@example.com")
     @patch("generateArticle.smtplib.SMTP")
-    def test_subject_uses_header_utf8_encoding(self, mock_smtp_cls):
-        """Subject must use email.header.Header with UTF-8 to avoid ASCII codec errors."""
+    def test_subject_uses_smtp_policy_utf8_encoding(self, mock_smtp_cls):
+        """Subject with non-ASCII must be properly encoded via SMTP policy (RFC 2047)."""
         mock_smtp = MagicMock()
         mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp)
         mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -426,7 +426,6 @@ class TestSendNotificationEmailUtf8:
 
         msg = mock_smtp.send_message.call_args[0][0]
         raw_subject = msg["Subject"]
-        # After str(Header(..., "utf-8")), the subject is a string with RFC 2047 encoding
         assert isinstance(raw_subject, str)
         # Verify the encoded bytes contain the RFC 2047 UTF-8 marker
         msg_bytes = msg.as_bytes()
