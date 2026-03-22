@@ -70,6 +70,7 @@ heroku config:set FROM_EMAIL="tu_correo@gmail.com"
 heroku config:set NOTIFY_EMAIL="tu_correo@gmail.com"
 
 # --- Comportamiento de notificaciones ---
+heroku config:set SEND_EMAILS="true"
 heroku config:set NOTIFY_VERBOSE="true"
 heroku config:set SEND_PROMPT_EMAIL="false"
 ```

@@ -61,6 +61,7 @@ El script carga su configuración desde un fichero `.env` en el mismo directorio
 | `SMTP_PASS` | ❌ | Contraseña SMTP |
 | `FROM_EMAIL` | ❌ | Dirección de envío |
 | `NOTIFY_EMAIL` | ❌ | Destinatario de las notificaciones |
+| `SEND_EMAILS` | ❌ | Si es `true` (por defecto), se envían emails; si es `false`, solo se imprime en consola |
 | `NOTIFY_VERBOSE` | ❌ | Si es `true` (por defecto), envía email en cada evento; si es `false`, solo en errores/avisos |
 | `SEND_PROMPT_EMAIL` | ❌ | Si es `true`, envía por email el prompt antes de llamar a la IA |
 
@@ -415,6 +416,7 @@ La respuesta puede llegar en distintos formatos:
 
 1. Imprime en consola con timestamp UTC y emoji indicador de nivel.
 2. Decide si enviar email según:
+   - `SEND_EMAILS=false` → no se envía ningún email (interruptor global).
    - `always_email=True` → siempre envía.
    - `NOTIFY_VERBOSE=true` → envía en todos los eventos.
    - `level in ("error","warning")` → siempre envía errores y advertencias.

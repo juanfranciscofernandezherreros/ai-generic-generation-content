@@ -85,6 +85,7 @@ Abre `.env` con tu editor y configura el proveedor de IA que quieras usar (ver s
 | `SMTP_PASS` | ❌ opcional | — | Contraseña SMTP. Para Gmail, usa una [contraseña de aplicación](https://myaccount.google.com/apppasswords). |
 | `FROM_EMAIL` | ❌ opcional | valor de `SMTP_USER` | Dirección de origen del email de notificación. |
 | `NOTIFY_EMAIL` | ❌ opcional | — | Dirección de destino de las notificaciones. |
+| `SEND_EMAILS` | ❌ opcional | `true` | Activar/desactivar el envío de emails (`true`/`false`). Si es `false`, solo se imprime en consola. |
 | `NOTIFY_VERBOSE` | ❌ opcional | `true` | Enviar emails detallados (`true`/`false`). |
 | `SEND_PROMPT_EMAIL` | ❌ opcional | `false` | Enviar el prompt por email antes de llamar a la IA (útil para depuración). |
 

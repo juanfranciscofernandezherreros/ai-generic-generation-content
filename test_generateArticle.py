@@ -347,6 +347,45 @@ class TestBuildTitlePrompt:
         assert "Evita" not in prompt
 
 
+# ---- send_notification_email (SEND_EMAILS toggle) ----
+class TestSendEmailsToggle:
+    """Verify that SEND_EMAILS=false disables all email sending."""
+
+    @patch("config.SEND_EMAILS", False)
+    @patch("notifications.smtplib.SMTP")
+    def test_send_emails_false_skips_sending(self, mock_smtp_cls):
+        """When SEND_EMAILS is False, send_notification_email should return False and not open SMTP."""
+        result = send_notification_email(
+            subject="Test",
+            html_body="<p>body</p>",
+            text_body="body",
+        )
+        assert result is False
+        mock_smtp_cls.assert_not_called()
+
+    @patch("config.SEND_EMAILS", True)
+    @patch("config.SMTP_HOST", "smtp.example.com")
+    @patch("config.SMTP_PORT", 587)
+    @patch("config.SMTP_USER", "user@example.com")
+    @patch("config.SMTP_PASS", "secret")
+    @patch("config.FROM_EMAIL", "user@example.com")
+    @patch("config.TO_EMAIL", "dest@example.com")
+    @patch("notifications.smtplib.SMTP")
+    def test_send_emails_true_sends_normally(self, mock_smtp_cls):
+        """When SEND_EMAILS is True, emails should be sent normally."""
+        mock_smtp = MagicMock()
+        mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_smtp)
+        mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = send_notification_email(
+            subject="Test",
+            html_body="<p>body</p>",
+            text_body="body",
+        )
+        assert result is True
+        mock_smtp.send_message.assert_called_once()
+
+
 # ---- send_notification_email (UTF-8) ----
 class TestSendNotificationEmailUtf8:
     """Verify that emails with non-ASCII (Spanish) characters are built without errors."""

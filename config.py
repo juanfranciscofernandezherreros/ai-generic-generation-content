@@ -26,6 +26,7 @@ AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME") or "adminUser"
 OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 # Notificaciones
+SEND_EMAILS = (os.getenv("SEND_EMAILS", "true").lower() in ("1", "true", "yes", "y"))
 SMTP_HOST   = os.getenv("SMTP_HOST")
 SMTP_PORT   = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER   = os.getenv("SMTP_USER")

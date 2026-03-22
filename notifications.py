@@ -11,6 +11,9 @@ from utils import html_escape, now_utc
 
 
 def send_notification_email(subject: str, html_body: str, text_body: str = None):
+    if not config.SEND_EMAILS:
+        print("ℹ️  Envío de emails desactivado (SEND_EMAILS=false). Se omite el envío.")
+        return False
     if not all([config.SMTP_HOST, config.SMTP_PORT, config.SMTP_USER, config.SMTP_PASS, config.FROM_EMAIL, config.TO_EMAIL]):
         print("⚠️  Faltan variables SMTP para enviar el correo. Se omite el envío.")
         return False
