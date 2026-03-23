@@ -251,35 +251,37 @@ def main():
     # Validar que la clave de API esté disponible
     using_gemini = _is_gemini_model(OPENAI_MODEL)
     using_ollama = _is_ollama_provider()
+    using_openai = not using_gemini and not using_ollama
     if using_ollama:
         pass  # Ollama no requiere clave de API
     elif using_gemini:
         if not GEMINI_API_KEY:
             notify("Configuración incompleta", "Falta la variable de entorno GEMINI_API_KEY.", level="error", always_email=True)
             sys.exit(1)
-    else:
+    elif using_openai:
         if not OPENAIAPIKEY:
             notify("Configuración incompleta", "Falta la variable de entorno OPENAIAPIKEY.", level="error", always_email=True)
             sys.exit(1)
 
     # Inicializar cliente de IA (OpenAI SDK — para modelos ChatGPT y Ollama como fallback)
     client_ai: OpenAI | None = None
-    if using_ollama:
-        try:
-            client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key=OLLAMA_PLACEHOLDER_API_KEY)
-            notify("Ollama listo", f"Modelo: {OPENAI_MODEL} — URL: {OLLAMA_BASE_URL}", level="info", always_email=True)
-        except Exception as e:
-            notify("Error inicializando Ollama", str(e), level="error", always_email=True)
-            sys.exit(1)
-    elif not using_gemini:
+    if using_openai:
         try:
             client_ai = OpenAI(api_key=OPENAIAPIKEY)
             notify("OpenAI listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
         except Exception as e:
             notify("Error inicializando OpenAI", str(e), level="error", always_email=True)
             sys.exit(1)
-    else:
+    elif using_gemini:
+        client_ai = None  # Gemini no usa este cliente
         notify("Gemini listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
+    elif using_ollama:
+        try:
+            client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key=OLLAMA_PLACEHOLDER_API_KEY)
+            notify("Ollama listo", f"Modelo: {OPENAI_MODEL} — URL: {OLLAMA_BASE_URL}", level="info", always_email=True)
+        except Exception as e:
+            notify("Error inicializando Ollama", str(e), level="error", always_email=True)
+            sys.exit(1)
 
     # ── Modo secuencial ──────────────────────────────────────────────────
     if args.sequential is not None:

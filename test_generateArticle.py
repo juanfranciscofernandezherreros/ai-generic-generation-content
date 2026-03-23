@@ -1357,6 +1357,37 @@ class TestMainCliOllama:
         mock_openai_cls.assert_called_once_with(base_url="http://localhost:11434/v1", api_key=OLLAMA_PLACEHOLDER_API_KEY)
 
 
+# ---- Gemini: CLI main() — client_ai is None ----
+class TestMainCliGemini:
+    """Tests for the main() CLI when Gemini is configured."""
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.GEMINI_API_KEY", "fake-gemini-key")
+    @patch("generateArticle.OPENAI_MODEL", "gemini-2.0-flash")
+    def test_main_does_not_create_openai_client_for_gemini(self, mock_openai_cls, mock_gen):
+        """main() should NOT instantiate OpenAI() when Gemini is the provider."""
+        import sys
+
+        from generateArticle import main
+        with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
+            main()
+        mock_openai_cls.assert_not_called()
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.GEMINI_API_KEY", "fake-gemini-key")
+    @patch("generateArticle.OPENAI_MODEL", "gemini-2.0-flash")
+    def test_main_passes_none_client_for_gemini(self, mock_gen):
+        """main() should pass client_ai=None to generate_and_save_article for Gemini."""
+        import sys
+
+        from generateArticle import main
+        with patch.object(sys, "argv", ["generateArticle.py", "--category", "Spring Boot", "--tag", "Lombok"]):
+            main()
+        _, kwargs = mock_gen.call_args
+        assert kwargs["client_ai"] is None
+
+
 # ---- Ollama: no Gemini interference ----
 class TestOllamaNoGeminiInterference:
     """When Ollama is configured with a non-Gemini model, Gemini paths should not activate."""

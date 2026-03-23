@@ -179,14 +179,15 @@ Si falta la clave de API de IA (`OPENAIAPIKEY` o `GEMINI_API_KEY` según el mode
 ### Paso 2 — Inicialización del cliente de IA
 
 ```python
-if not using_gemini:
+if using_openai:
     client_ai = OpenAI(api_key=OPENAIAPIKEY)
-else:
-    # Gemini se usa a través de LangChain, no requiere cliente OpenAI
-    client_ai = None
+elif using_gemini:
+    client_ai = None  # Gemini no usa este cliente
+elif using_ollama:
+    client_ai = OpenAI(base_url=OLLAMA_BASE_URL, api_key=OLLAMA_PLACEHOLDER_API_KEY)
 ```
 
-Inicializa el cliente OpenAI SDK (solo para fallback en modelos ChatGPT). Gemini se gestiona directamente a través de LangChain.
+Inicializa el cliente OpenAI SDK (solo para fallback en modelos ChatGPT y Ollama). Gemini se gestiona directamente a través de LangChain y no requiere cliente OpenAI.
 
 ---
 
