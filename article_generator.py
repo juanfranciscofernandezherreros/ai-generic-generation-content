@@ -63,6 +63,7 @@ _GEMINI_RECOMMENDED_MODELS = (
 )
 _GEMINI_RECOMMENDED_MODELS_STR = ", ".join(_GEMINI_RECOMMENDED_MODELS)
 _JSON_ERROR_PREVIEW_LENGTH = 300
+_MAX_GEMINI_JSON_PARSE_ATTEMPTS = 2
 
 
 def _format_invalid_json_error(raw_text: str, err: json.JSONDecodeError) -> str:
@@ -169,43 +170,57 @@ def generate_article_with_ai(client_ai: BaseChatModel | None, parent_name: str, 
     """
     user_prompt = build_generation_prompt(parent_name, subcat_name, tag_text, title=title, avoid_titles=avoid_titles, language=language)
 
-    raw_text = None
-
-    # 1) Intento con LangChain — con reintentos
-    def _call_langchain_article():
-        return _generate_with_langchain(
-            config.GENERATION_SYSTEM_MSG,
-            user_prompt,
-            max_tokens=config.OPENAI_MAX_ARTICLE_TOKENS,
-            temperature=config.AI_TEMPERATURE_ARTICLE,
-        )
-
-    try:
-        raw_text = _retry_with_backoff(_call_langchain_article)
-    except Exception as e:
-        if _is_gemini_model(config.OPENAI_MODEL):
-            raise RuntimeError(_format_gemini_langchain_error("Fallo en LangChain con Gemini", e)) from e
-        logger.info("LangChain no disponible para artículo; usando SDK como fallback.")
+    def _request_article_text() -> str:
         raw_text = None
 
-    # 2) Fallback: invocación directa del BaseChatModel
-    if not raw_text and client_ai is not None:
-        def _call_chat():
-            return _invoke_chat_model(client_ai, config.GENERATION_SYSTEM_MSG, user_prompt)
+        # 1) Intento con LangChain — con reintentos
+        def _call_langchain_article():
+            return _generate_with_langchain(
+                config.GENERATION_SYSTEM_MSG,
+                user_prompt,
+                max_tokens=config.OPENAI_MAX_ARTICLE_TOKENS,
+                temperature=config.AI_TEMPERATURE_ARTICLE,
+            )
 
         try:
-            raw_text = _retry_with_backoff(_call_chat)
+            raw_text = _retry_with_backoff(_call_langchain_article)
         except Exception as e:
-            raise RuntimeError(f"Fallo llamando al modelo de chat: {e}")
+            if _is_gemini_model(config.OPENAI_MODEL):
+                raise RuntimeError(_format_gemini_langchain_error("Fallo en LangChain con Gemini", e)) from e
+            logger.info("LangChain no disponible para artículo; usando SDK como fallback.")
+            raw_text = None
 
-    if not raw_text:
-        raise RuntimeError("El modelo no devolvió contenido.")
+        # 2) Fallback: invocación directa del BaseChatModel
+        if not raw_text and client_ai is not None:
+            def _call_chat():
+                return _invoke_chat_model(client_ai, config.GENERATION_SYSTEM_MSG, user_prompt)
 
-    json_text = _extract_json_block(raw_text)
-    try:
-        data = _safe_json_loads(json_text)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(_format_invalid_json_error(json_text, e)) from e
+            try:
+                raw_text = _retry_with_backoff(_call_chat)
+            except Exception as e:
+                raise RuntimeError(f"Fallo llamando al modelo de chat: {e}")
+
+        if not raw_text:
+            raise RuntimeError("El modelo no devolvió contenido.")
+        return raw_text
+
+    max_json_parse_attempts = _MAX_GEMINI_JSON_PARSE_ATTEMPTS if _is_gemini_model(config.OPENAI_MODEL) else 1
+
+    data: dict
+    for parse_attempt in range(1, max_json_parse_attempts + 1):
+        raw_text = _request_article_text()
+        json_text = _extract_json_block(raw_text)
+        try:
+            data = _safe_json_loads(json_text)
+            break
+        except json.JSONDecodeError as e:
+            if parse_attempt == max_json_parse_attempts:
+                raise RuntimeError(_format_invalid_json_error(json_text, e)) from e
+            logger.warning(
+                "La IA devolvió JSON inválido al generar artículo; reintentando (%d/%d).",
+                parse_attempt,
+                max_json_parse_attempts,
+            )
 
     title = str(data.get("title", "")).strip()
     summary = str(data.get("summary", "")).strip()
