@@ -957,11 +957,12 @@ class TestGenerateArticleWithAILangchain:
         with pytest.raises(RuntimeError, match=r"JSON inválido.*Unterminated string.*columna"):
             generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
 
+    @patch("config.OPENAI_MODEL", "gemini-2.0-flash")
     @patch("article_generator._generate_with_langchain", side_effect=[
         '{"title":"JWT","summary":"x","body":"<p>Texto sin cierre',
         _VALID_ARTICLE_JSON,
     ])
-    def test_retries_once_when_model_returns_invalid_json_then_succeeds(self, mock_lc):
+    def test_retries_once_when_model_returns_invalid_json_then_succeeds_for_gemini(self, mock_lc):
         """If first response has malformed JSON, generation retries and succeeds."""
         mock_client = MagicMock()
         title, summary, body, keywords = generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
@@ -970,6 +971,15 @@ class TestGenerateArticleWithAILangchain:
         assert "<h1>" in body
         assert "spring boot" in keywords
         assert mock_lc.call_count == 2
+
+    @patch("config.OPENAI_MODEL", "gpt-4o")
+    @patch("article_generator._generate_with_langchain", return_value='{"title":"JWT","summary":"x","body":"<p>Texto sin cierre')
+    def test_does_not_retry_invalid_json_for_openai_models(self, mock_lc):
+        """OpenAI path should preserve current behavior: fail fast on invalid JSON."""
+        mock_client = MagicMock()
+        with pytest.raises(RuntimeError, match=r"JSON inválido.*Unterminated string.*columna"):
+            generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
+        assert mock_lc.call_count == 1
 
     @patch("article_generator.build_generation_prompt")
     @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)

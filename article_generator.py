@@ -63,7 +63,7 @@ _GEMINI_RECOMMENDED_MODELS = (
 )
 _GEMINI_RECOMMENDED_MODELS_STR = ", ".join(_GEMINI_RECOMMENDED_MODELS)
 _JSON_ERROR_PREVIEW_LENGTH = 300
-_MAX_JSON_PARSE_ATTEMPTS = 2
+_MAX_GEMINI_JSON_PARSE_ATTEMPTS = 2
 
 
 def _format_invalid_json_error(raw_text: str, err: json.JSONDecodeError) -> str:
@@ -204,20 +204,22 @@ def generate_article_with_ai(client_ai: BaseChatModel | None, parent_name: str, 
             raise RuntimeError("El modelo no devolvió contenido.")
         return raw_text
 
+    max_json_parse_attempts = _MAX_GEMINI_JSON_PARSE_ATTEMPTS if _is_gemini_model(config.OPENAI_MODEL) else 1
+
     data: dict
-    for parse_attempt in range(1, _MAX_JSON_PARSE_ATTEMPTS + 1):
+    for parse_attempt in range(1, max_json_parse_attempts + 1):
         raw_text = _request_article_text()
         json_text = _extract_json_block(raw_text)
         try:
             data = _safe_json_loads(json_text)
             break
         except json.JSONDecodeError as e:
-            if parse_attempt == _MAX_JSON_PARSE_ATTEMPTS:
+            if parse_attempt == max_json_parse_attempts:
                 raise RuntimeError(_format_invalid_json_error(json_text, e)) from e
             logger.warning(
                 "La IA devolvió JSON inválido al generar artículo; reintentando (%d/%d).",
                 parse_attempt,
-                _MAX_JSON_PARSE_ATTEMPTS,
+                max_json_parse_attempts,
             )
 
     title = str(data.get("title", "")).strip()
