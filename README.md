@@ -7,7 +7,7 @@
 
 Generador **CLI** de artículos técnicos SEO con salida a **JSON local** (sin base de datos), usando **LangChain** (LCEL) con soporte para **OpenAI GPT / Google Gemini / Ollama**. Optimizado para **SEO on-page**, con datos estructurados **Schema.org**, metadatos **Open Graph** y gestión completa de **categorías**, **subcategorías** y **tags**.
 
-> **Última actualización:** 2026-03-20
+> **Última actualización:** 2026-03-23
 
 ---
 
@@ -114,7 +114,7 @@ pip install -r requirements.txt
 
 ### 4. Ejecutar el script principal
 
-El script requiere el argumento `--tag` (tema del artículo). El resto son opcionales:
+El script requiere el argumento `--category` (categoría del artículo). El resto son opcionales:
 
 ```bash
 python3 generateArticle.py \
@@ -129,13 +129,14 @@ python3 generateArticle.py \
 
 | Argumento | Obligatorio | Descripción | Por defecto |
 |---|---|---|---|
-| `--tag` / `-t` | ✅ | Tema o tag del artículo | — |
-| `--category` / `-c` | ❌ | Nombre de la categoría padre | `General` |
+| `--category` / `-c` | ✅ | Nombre de la categoría padre | — |
+| `--tag` / `-t` | ❌ | Tema o tag del artículo | — |
 | `--subcategory` / `-s` | ❌ | Nombre de la subcategoría | `General` |
 | `--output` / `-o` | ❌ | Ruta del fichero JSON de salida | `article.json` |
 | `--username` / `--author` / `-u` / `-a` | ❌ | Username/nombre del autor | valor de `AUTHOR_USERNAME` |
 | `--site` / `-S` | ❌ | URL base del sitio para URLs canónicas | valor de `SITE` |
 | `--language` / `-l` | ❌ | Código de idioma ISO 639-1 (`es`, `en`, `fr`…) | valor de `ARTICLE_LANGUAGE` |
+| `--title` / `-T` | ❌ | Título del artículo (si se omite, se genera con IA) | — |
 | `--avoid-titles` | ❌ | Títulos a evitar (separados por `;`). El script compara el nuevo título con esta lista y regenera si la similitud supera el umbral 0.86 | `""` |
 
 El script:
@@ -579,7 +580,15 @@ gcloud logging read \
 
 ```
 python-article/
-├── generateArticle.py       # Script principal CLI
+├── generateArticle.py       # Script principal CLI (fachada que re-exporta los submódulos)
+├── config.py                # Constantes y configuración del entorno
+├── utils.py                 # Funciones auxiliares genéricas (slugify, similitud, etc.)
+├── html_utils.py            # Utilidades de procesamiento HTML (count_words, reading_time)
+├── seo.py                   # Funciones SEO (canonical URL, JSON-LD)
+├── notifications.py         # Sistema de notificaciones y email SMTP
+├── prompts.py               # Construcción de prompts para la IA
+├── ai_providers.py          # Proveedores de IA (LangChain LCEL, Ollama, Gemini)
+├── article_generator.py     # Generación y guardado de artículos
 ├── seed_data.py             # Taxonomía: categorías, subcategorías y tags
 ├── test_generateArticle.py  # Tests del script principal
 ├── test_seed_data.py        # Tests de la taxonomía
@@ -622,23 +631,40 @@ Además, **te avisa por correo electrónico** de todo lo que hace:
 
 ## 🏗️ Diagrama de arquitectura
 
-La generación de artículos usa **LangChain Expression Language (LCEL)** como capa principal: `ChatPromptTemplate | llm | StrOutputParser()` (encapsulado en la clase `LLMChain` del proyecto), con fallback al SDK de OpenAI en caso de error. Los proveedores soportados son OpenAI, Google Gemini y Ollama.
+`generateArticle.py` actúa como **fachada CLI** que re-exporta todos los símbolos de **8 submódulos** especializados. La generación de artículos usa **LangChain Expression Language (LCEL)** como capa principal: `ChatPromptTemplate | llm | StrOutputParser()` (encapsulado en la clase `LLMChain` del proyecto), con fallback al SDK de OpenAI en caso de error. Los proveedores soportados son OpenAI, Google Gemini y Ollama.
 
 ```mermaid
 flowchart TD
     A["⏰ Scheduler\n(K8s CronJob / Cloud Scheduler)"] -->|"Cada lunes 08:00 Madrid"| B
-    B["🐍 generateArticle.py\n--tag --category --subcategory"] --> C["🔍 Validación\n(.env + clave API)"]
-    C --> F["🤖 LangChain LCEL\n(ChatPromptTemplate | llm | StrOutputParser)\n→ OpenAI / Gemini / Ollama\n[fallback: OpenAI SDK directo]"]
-    F -->|"Título + Body + Keywords + FAQ"| G["📝 Post-procesado SEO\n(metaTitle, canonicalUrl,\nJSON-LD, Open Graph)"]
-    G --> H["💾 Fichero JSON local\n(article.json)"]
-    H --> I["📧 Notificación email\n(SMTP)"]
+    B["🐍 generateArticle.py\n--category --tag --subcategory"] --> C["🔍 Validación\n(.env + clave API)\n[config.py]"]
+    C --> D["🧩 Submódulos\nconfig · utils · html_utils\nseo · notifications\nprompts · ai_providers\narticle_generator"]
+    D --> F["🤖 LangChain LCEL\n(ChatPromptTemplate | llm | StrOutputParser)\n→ OpenAI / Gemini / Ollama\n[fallback: OpenAI SDK directo]\n[ai_providers.py]"]
+    F -->|"Título + Body + Keywords + FAQ"| G["📝 Post-procesado SEO\n(metaTitle, canonicalUrl,\nJSON-LD, Open Graph)\n[seo.py · html_utils.py]"]
+    G --> H["💾 Fichero JSON local\n(article.json)\n[article_generator.py]"]
+    H --> I["📧 Notificación email\n(SMTP)\n[notifications.py]"]
     I --> J["🌐 Blog\n(importa el JSON generado)"]
 
     style A fill:#f59e0b,stroke:#d97706,color:#000
     style B fill:#3b82f6,stroke:#2563eb,color:#fff
+    style D fill:#8b5cf6,stroke:#7c3aed,color:#fff
     style F fill:#10b981,stroke:#059669,color:#fff
     style H fill:#6366f1,stroke:#4f46e5,color:#fff
     style J fill:#ec4899,stroke:#db2777,color:#fff
+```
+
+**Arquitectura modular:**
+
+```
+generateArticle.py  (fachada CLI + re-exportaciones)
+       │
+       ├── config.py          → Constantes y configuración del entorno
+       ├── utils.py           → Funciones auxiliares (slugify, similitud, etc.)
+       ├── html_utils.py      → Utilidades HTML (count_words, reading_time)
+       ├── seo.py             → SEO (canonical URL, JSON-LD Schema.org)
+       ├── notifications.py   → Notificaciones y email SMTP
+       ├── prompts.py         → Construcción de prompts para la IA
+       ├── ai_providers.py    → Proveedores IA (LangChain LCEL + fallback SDK)
+       └── article_generator.py → Generación y guardado del artículo
 ```
 
 **Flujo resumido:**
@@ -646,7 +672,7 @@ flowchart TD
 ```
 Scheduler (CronJob)
        ↓
-generateArticle.py --tag ... --category ... --subcategory ...
+generateArticle.py --category ... --tag ... --subcategory ...
        ↓
   ┌─── Validación de entorno ──────────────────────────────┐
   │         ↓                                               │
@@ -843,9 +869,10 @@ Si falta la clave de API, te envía un correo avisándote y **se detiene**.
 
 ### 2) Recibe el tema a generar
 El script recibe el tema mediante argumentos CLI:
-- `--tag` (obligatorio): el tema o tag del artículo
-- `--category` y `--subcategory`: clasificación del artículo
-- `--language`: idioma de generación
+- `--category` (obligatorio): la categoría del artículo
+- `--tag` (opcional): el tema o tag del artículo
+- `--subcategory` y `--language`: clasificación e idioma del artículo
+- `--title` (opcional): si se proporciona, la IA genera el cuerpo usando ese título como contexto
 
 ### 3) Pide a la IA que escriba el artículo (optimizado para SEO)
 Genera un encargo para la IA con instrucciones SEO detalladas usando **LangChain LCEL** (`ChatPromptTemplate | llm | StrOutputParser()`):
@@ -1119,7 +1146,7 @@ Durante la ejecución, el script puede mandarte distintos tipos de mensajes por 
 
 ## ⚙️ Constantes y configuración interna
 
-El script define las siguientes constantes en `generateArticle.py`:
+Las constantes del proyecto se definen en `config.py`:
 
 | Constante | Valor | Descripción |
 |---|---|---|

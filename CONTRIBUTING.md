@@ -79,7 +79,15 @@ La configuración de ruff está en `pyproject.toml`.
 
 ```
 python-article/
-├── generateArticle.py       # Script principal CLI
+├── generateArticle.py       # Script principal CLI (fachada que re-exporta los submódulos)
+├── config.py                # Constantes y configuración del entorno
+├── utils.py                 # Funciones auxiliares genéricas (slugify, similitud, etc.)
+├── html_utils.py            # Utilidades de procesamiento HTML (count_words, reading_time)
+├── seo.py                   # Funciones SEO (canonical URL, JSON-LD)
+├── notifications.py         # Sistema de notificaciones y email SMTP
+├── prompts.py               # Construcción de prompts para la IA
+├── ai_providers.py          # Proveedores de IA (LangChain LCEL, Ollama, Gemini)
+├── article_generator.py     # Generación y guardado de artículos
 ├── seed_data.py             # Taxonomía: categorías, subcategorías y tags
 ├── test_generateArticle.py  # Tests del script principal
 ├── test_seed_data.py        # Tests de la taxonomía

@@ -23,11 +23,24 @@ Este documento explica en detalle la arquitectura interna, el flujo de datos y c
 
 ## 1. Visión general
 
-`generateArticle.py` es un script Python que automatiza la **generación de artículos técnicos optimizados para SEO** y los exporta a un fichero JSON local. No requiere base de datos. El flujo principal es:
+`generateArticle.py` es un script Python que actúa como **fachada CLI** y re-exporta todos los símbolos de **8 submódulos** especializados. Automatiza la **generación de artículos técnicos optimizados para SEO** y los exporta a un fichero JSON local. No requiere base de datos. El flujo principal es:
 
 ```
-Argumentos CLI → Validación → IA (OpenAI/Gemini) → Metadatos SEO → Fichero JSON → Email
+Argumentos CLI → Validación → IA (OpenAI/Gemini/Ollama) → Metadatos SEO → Fichero JSON → Email
 ```
+
+**Submódulos del proyecto:**
+
+| Módulo | Responsabilidad |
+|---|---|
+| `config.py` | Constantes y configuración del entorno |
+| `utils.py` | Funciones auxiliares genéricas (slugify, similitud, etc.) |
+| `html_utils.py` | Utilidades de procesamiento HTML (count_words, reading_time) |
+| `seo.py` | Funciones SEO (canonical URL, JSON-LD Schema.org) |
+| `notifications.py` | Sistema de notificaciones y email SMTP |
+| `prompts.py` | Construcción de prompts para la IA |
+| `ai_providers.py` | Proveedores de IA (LangChain LCEL, Ollama, Gemini) |
+| `article_generator.py` | Generación y guardado de artículos |
 
 Cada ejecución genera **un artículo** a partir del tema indicado en `--tag`. El script está diseñado para ser ejecutado de forma programada (cron semanal, CI/CD, etc.) y notifica todos los eventos importantes por correo electrónico.
 
@@ -72,20 +85,22 @@ El script acepta los siguientes argumentos CLI (todos sobreescriben las variable
 
 | Argumento | Obligatorio | Por defecto | Descripción |
 |---|---|---|---|
-| `--tag` / `-t` | ✅ | — | Tema o tag del artículo |
-| `--category` / `-c` | ❌ | `General` | Nombre de la categoría padre |
+| `--category` / `-c` | ✅ | — | Nombre de la categoría padre |
+| `--tag` / `-t` | ❌ | — | Tema o tag del artículo |
 | `--subcategory` / `-s` | ❌ | `General` | Nombre de la subcategoría |
 | `--output` / `-o` | ❌ | `article.json` | Ruta del fichero JSON de salida |
 | `--username` / `--author` / `-u` / `-a` | ❌ | `AUTHOR_USERNAME` | Username/nombre del autor (`--author` y `-a` son alias para compatibilidad) |
 | `--site` / `-S` | ❌ | `SITE` | URL base del sitio |
 | `--language` / `-l` | ❌ | `ARTICLE_LANGUAGE` | Código de idioma ISO 639-1 |
+| `--title` / `-T` | ❌ | — | Título del artículo (si se omite, se genera con IA) |
+| `--provider` / `-p` | ❌ | `AI_PROVIDER` | Proveedor de IA: `auto`, `openai`, `gemini` u `ollama` |
 | `--avoid-titles` | ❌ | `""` | Títulos a evitar, separados por `;` |
 
 ---
 
 ## 3. Constantes importantes
 
-Definidas directamente en el código, controlan el comportamiento del algoritmo de deduplicación de títulos:
+Definidas en `config.py`, controlan el comportamiento del algoritmo de deduplicación de títulos:
 
 | Constante | Valor | Significado |
 |---|---|---|
@@ -104,16 +119,21 @@ Definidas directamente en el código, controlan el comportamiento del algoritmo 
 
 ## 4. Arquitectura y componentes principales
 
-El script está organizado en capas bien separadas:
+`generateArticle.py` es una **fachada CLI** que re-exporta todos los símbolos de 8 submódulos especializados para mantener la compatibilidad con el código y los tests existentes. La lógica real reside en los submódulos:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  main()                                                          │
-│  ├── Parseo de argumentos CLI (argparse)                         │
-│  ├── Validación de entorno (clave API)                           │
-│  └── generate_and_save_article()  ← generación y exportación    │
-│       ├── generate_article_with_ai()  ← llamada a IA            │
-│       ├── generate_title_with_ai()    ← reintentos de título     │
+│  generateArticle.py  (fachada CLI + re-exportaciones)           │
+│  ├── config.py           → Constantes y configuración           │
+│  ├── utils.py            → Funciones auxiliares genéricas       │
+│  ├── html_utils.py       → Utilidades de procesamiento HTML     │
+│  ├── seo.py              → Funciones SEO (canonical, JSON-LD)   │
+│  ├── notifications.py    → Notificaciones y email SMTP          │
+│  ├── prompts.py          → Construcción de prompts para la IA   │
+│  ├── ai_providers.py     → Proveedores IA (LangChain + fallback)│
+│  └── article_generator.py                                       │
+│       ├── generate_article_with_ai()  ← llamada a IA           │
+│       ├── generate_title_with_ai()    ← reintentos de título    │
 │       ├── build_json_ld_structured_data() ← SEO JSON-LD         │
 │       └── json.dump(doc, file)        ← escritura en JSON       │
 └─────────────────────────────────────────────────────────────────┘
@@ -138,14 +158,15 @@ El script está organizado en capas bien separadas:
 ### Paso 1 — Parseo de argumentos CLI y validación de entorno
 
 ```python
-# Argumentos CLI obligatorios y opcionales
-parser.add_argument("--tag", required=True, ...)
-parser.add_argument("--category", default="General", ...)
+# Argumentos CLI: --category es obligatorio, --tag es opcional
+parser.add_argument("--category", required=True, ...)
+parser.add_argument("--tag", default=None, ...)
+parser.add_argument("--title", default=None, ...)
 # ...
 args = parser.parse_args()
 
 # Comprueba que la clave de API está disponible
-if not OPENAIAPIKEY and not GEMINI_API_KEY:
+if not OPENAIAPIKEY and not GEMINI_API_KEY and not OLLAMA_BASE_URL:
     notify("Configuración incompleta", ..., level="error")
     sys.exit(1)
 ```
