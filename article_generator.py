@@ -107,7 +107,9 @@ def generate_article_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_
 
     try:
         raw_text = _retry_with_backoff(_call_langchain_article)
-    except Exception:
+    except Exception as e:
+        if _is_gemini_model(config.OPENAI_MODEL):
+            raise RuntimeError(f"Fallo en LangChain con Gemini: {e}") from e
         logger.info("LangChain no disponible para artículo; usando SDK como fallback.")
         raw_text = None
 
@@ -199,7 +201,9 @@ def generate_title_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_na
 
     try:
         raw_text = _retry_with_backoff(_call_langchain_title)
-    except Exception:
+    except Exception as e:
+        if _is_gemini_model(config.OPENAI_MODEL):
+            raise RuntimeError(f"Fallo en LangChain con Gemini para título: {e}") from e
         logger.info("LangChain no disponible para título; usando SDK como fallback.")
         raw_text = None
 

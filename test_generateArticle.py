@@ -1527,6 +1527,27 @@ class TestGeminiNoOpenAIFallback:
             generate_title_with_ai(mock_client, "Cat", "Sub", "Tag")
         mock_client.chat.completions.create.assert_not_called()
 
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("Invalid API key"))
+    @patch("config.OPENAI_MODEL", "gemini-2.0-flash")
+    def test_article_gemini_error_message_preserved(self, mock_lc):
+        """When LangChain fails for Gemini, the actual error must be included in the RuntimeError."""
+        with pytest.raises(RuntimeError, match="Invalid API key"):
+            generate_article_with_ai(None, "Cat", "Sub", "Tag")
+
+    @patch("article_generator._generate_with_langchain", side_effect=RuntimeError("Invalid API key"))
+    @patch("config.OPENAI_MODEL", "gemini-2.0-flash")
+    def test_title_gemini_error_message_preserved(self, mock_lc):
+        """When LangChain fails for Gemini, the actual error must be included in the RuntimeError for titles."""
+        with pytest.raises(RuntimeError, match="Invalid API key"):
+            generate_title_with_ai(None, "Cat", "Sub", "Tag")
+
+    @patch("article_generator._generate_with_langchain", side_effect=ConnectionError("network down"))
+    @patch("config.OPENAI_MODEL", "gemini-2.0-flash")
+    def test_article_gemini_connection_error_preserved(self, mock_lc):
+        """Connection errors from LangChain are propagated for Gemini models after retries."""
+        with pytest.raises(RuntimeError, match="Fallo en LangChain con Gemini"):
+            generate_article_with_ai(None, "Cat", "Sub", "Tag")
+
 
 # ---- generate_and_save_article ----
 _VALID_JSON = json.dumps({
