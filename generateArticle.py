@@ -46,6 +46,8 @@ from config import (  # noqa: F401
     OPENAI_MAX_TITLE_TOKENS,
     OPENAI_MODEL,
     OPENAI_RETRY_BASE_DELAY,
+    OUTPUT_FILENAME,
+    OUTPUT_FILENAME_PATTERN,
     SEND_EMAILS,
     SEND_PROMPT_EMAIL,
     SIMILARITY_THRESHOLD_DEFAULT,
@@ -123,8 +125,8 @@ def main():
                         help="Nombre de la categoría padre (requerido)")
     parser.add_argument("--subcategory", "-s", default="General",
                         help="Nombre de la subcategoría")
-    parser.add_argument("--output", "-o", default="article.json",
-                        help="Ruta del fichero JSON de salida")
+    parser.add_argument("--output", "-o", default=OUTPUT_FILENAME,
+                        help="Ruta del fichero JSON de salida (también configurable con OUTPUT_FILENAME en .env)")
     parser.add_argument("--username", "--author", "-u", "-a",
                         dest="username",
                         default=AUTHOR_USERNAME,

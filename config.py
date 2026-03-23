@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -26,6 +27,21 @@ AUTHOR_USERNAME = os.getenv("AUTHOR_USERNAME") or "adminUser"
 OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-4o")
 # Proveedor de IA explícito: "openai", "gemini", "ollama" o "auto" (detección automática por modelo/URL)
 AI_PROVIDER     = os.getenv("AI_PROVIDER", "auto").lower().strip()
+
+# Nombre del fichero JSON de salida: se configura mediante la variable de entorno OUTPUT_FILENAME.
+# Debe ser una ruta válida que termine en .json (p. ej. "article.json", "output/my-article.json").
+# Si el valor no coincide con el patrón permitido, se usa "article.json" por defecto.
+OUTPUT_FILENAME_PATTERN = re.compile(r"^[\w][\w.\-/]*\.json$")
+_output_filename_env    = os.getenv("OUTPUT_FILENAME", "article.json")
+if OUTPUT_FILENAME_PATTERN.match(_output_filename_env):
+    OUTPUT_FILENAME = _output_filename_env
+else:
+    logger.warning(
+        "OUTPUT_FILENAME='%s' no coincide con el patrón esperado (^[\\w][\\w.\\-/]*\\.json$). "
+        "Usando 'article.json'.",
+        _output_filename_env,
+    )
+    OUTPUT_FILENAME = "article.json"
 
 # Notificaciones
 SEND_EMAILS = (os.getenv("SEND_EMAILS", "true").lower() in ("1", "true", "yes", "y"))

@@ -16,6 +16,8 @@ from generateArticle import (
     OLLAMA_PLACEHOLDER_API_KEY,
     OPENAI_MAX_ARTICLE_TOKENS,
     OPENAI_MAX_TITLE_TOKENS,
+    OUTPUT_FILENAME,
+    OUTPUT_FILENAME_PATTERN,
     SIMILARITY_THRESHOLD_DEFAULT,
     SIMILARITY_THRESHOLD_STRICT,
     TITLE_SYSTEM_MSG,
@@ -312,7 +314,65 @@ class TestConstants:
         assert len(TITLE_SYSTEM_MSG) > 0
 
 
-# ---- build_title_prompt ----
+# ---- OUTPUT_FILENAME env var with regex validation ----
+class TestOutputFilename:
+    """Tests for OUTPUT_FILENAME env var and OUTPUT_FILENAME_PATTERN regex."""
+
+    def test_pattern_accepts_simple_filename(self):
+        """Pattern must accept a plain .json filename."""
+        assert OUTPUT_FILENAME_PATTERN.match("article.json")
+
+    def test_pattern_accepts_path_with_subdirectory(self):
+        """Pattern must accept a relative path ending in .json."""
+        assert OUTPUT_FILENAME_PATTERN.match("output/my-article.json")
+
+    def test_pattern_accepts_underscored_name(self):
+        assert OUTPUT_FILENAME_PATTERN.match("my_article_v2.json")
+
+    def test_pattern_accepts_dot_in_name(self):
+        assert OUTPUT_FILENAME_PATTERN.match("article.v2.json")
+
+    def test_pattern_rejects_non_json_extension(self):
+        """Pattern must reject filenames that do not end in .json."""
+        assert not OUTPUT_FILENAME_PATTERN.match("article.txt")
+
+    def test_pattern_rejects_no_extension(self):
+        assert not OUTPUT_FILENAME_PATTERN.match("article")
+
+    def test_pattern_rejects_space_in_name(self):
+        """Pattern must reject filenames containing spaces."""
+        assert not OUTPUT_FILENAME_PATTERN.match("my article.json")
+
+    def test_pattern_rejects_empty_string(self):
+        assert not OUTPUT_FILENAME_PATTERN.match("")
+
+    def test_default_output_filename_is_valid(self):
+        """OUTPUT_FILENAME must be a non-empty string ending in .json."""
+        assert isinstance(OUTPUT_FILENAME, str)
+        assert OUTPUT_FILENAME.endswith(".json")
+
+    def test_env_var_sets_output_filename(self):
+        """When OUTPUT_FILENAME env var holds a valid value it should be used."""
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OUTPUT_FILENAME": "custom_output.json"}):
+            importlib.reload(_cfg)
+            assert _cfg.OUTPUT_FILENAME == "custom_output.json"
+        # restore
+        importlib.reload(_cfg)
+
+    def test_invalid_env_var_falls_back_to_default(self):
+        """An invalid OUTPUT_FILENAME env var must fall back to 'article.json'."""
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OUTPUT_FILENAME": "bad file name!.json"}):
+            importlib.reload(_cfg)
+            assert _cfg.OUTPUT_FILENAME == "article.json"
+        # restore
+        importlib.reload(_cfg)
+
+
+
 class TestBuildTitlePrompt:
     def test_contains_tag_and_category(self):
         prompt = build_title_prompt("Spring Boot", "Lombok", "@Builder")
@@ -1636,6 +1696,25 @@ class TestMainCli:
             main()
         _, kwargs = mock_gen.call_args
         assert kwargs["output_path"] == "/tmp/test_output.json"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    @patch("generateArticle.OUTPUT_FILENAME", "env_output.json")
+    def test_main_uses_output_filename_env_var_as_default(self, mock_openai_cls, mock_gen):
+        """main() must use OUTPUT_FILENAME as default for --output when not provided via CLI."""
+        import sys
+
+        from generateArticle import main
+        with patch.object(sys, "argv", [
+            "generateArticle.py",
+            "--category", "Spring Boot",
+            "--tag", "Lombok",
+        ]):
+            main()
+        _, kwargs = mock_gen.call_args
+        assert kwargs["output_path"] == "env_output.json"
 
     @patch("generateArticle.generate_and_save_article", return_value=True)
     @patch("generateArticle.OpenAI")
