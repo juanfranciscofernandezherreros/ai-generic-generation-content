@@ -56,6 +56,39 @@ from utils import now_utc
 
 logger = config.logger
 
+_GEMINI_RECOMMENDED_MODELS = (
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+)
+_GEMINI_RECOMMENDED_MODELS_STR = ", ".join(_GEMINI_RECOMMENDED_MODELS)
+
+
+def _format_gemini_langchain_error(prefix: str, err: Exception) -> str:
+    """Devuelve un mensaje de error accionable para fallos de LangChain con Gemini.
+
+    Args:
+        prefix: Prefijo base del mensaje de error.
+        err: Excepción capturada al invocar LangChain.
+
+    Returns:
+        Mensaje de error formateado con guía accionable para el usuario.
+    """
+    raw_msg = str(err)
+    lower_msg = raw_msg.lower()
+    if (
+        "api_key_invalid" in lower_msg
+        or "api key not valid" in lower_msg
+        or "invalid api key" in lower_msg
+    ):
+        return (
+            f"{prefix}: GEMINI_API_KEY no es válida. "
+            f"Este proyecto usa LangChain para Gemini. "
+            f"Modelos recomendados: {_GEMINI_RECOMMENDED_MODELS_STR}. "
+            f"Error original: {raw_msg}"
+        )
+    return f"{prefix}: {raw_msg}"
+
 
 def generate_article_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_name: str, tag_text: str, title: str | None = None, avoid_titles: list[str] | None = None, language: str = config.ARTICLE_LANGUAGE) -> tuple[str, str, str, list[str]]:
     """Genera un artículo técnico completo usando la IA configurada.
@@ -109,7 +142,7 @@ def generate_article_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_
         raw_text = _retry_with_backoff(_call_langchain_article)
     except Exception as e:
         if _is_gemini_model(config.OPENAI_MODEL):
-            raise RuntimeError(f"Fallo en LangChain con Gemini: {e}") from e
+            raise RuntimeError(_format_gemini_langchain_error("Fallo en LangChain con Gemini", e)) from e
         logger.info("LangChain no disponible para artículo; usando SDK como fallback.")
         raw_text = None
 
@@ -203,7 +236,7 @@ def generate_title_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_na
         raw_text = _retry_with_backoff(_call_langchain_title)
     except Exception as e:
         if _is_gemini_model(config.OPENAI_MODEL):
-            raise RuntimeError(f"Fallo en LangChain con Gemini para título: {e}") from e
+            raise RuntimeError(_format_gemini_langchain_error("Fallo en LangChain con Gemini para título", e)) from e
         logger.info("LangChain no disponible para título; usando SDK como fallback.")
         raw_text = None
 
