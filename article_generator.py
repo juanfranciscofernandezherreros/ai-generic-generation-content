@@ -23,13 +23,14 @@ from utils import now_utc
 logger = config.logger
 
 
-def generate_article_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_name: str, tag_text: str, avoid_titles: list[str] | None = None, language: str = config.ARTICLE_LANGUAGE) -> tuple[str, str, str, list[str]]:
+def generate_article_with_ai(client_ai: OpenAI | None, parent_name: str, subcat_name: str, tag_text: str, title: str | None = None, avoid_titles: list[str] | None = None, language: str = config.ARTICLE_LANGUAGE) -> tuple[str, str, str, list[str]]:
     """
     Genera el artículo usando LangChain (ChatOpenAI, ChatGoogleGenerativeAI o Ollama según el modelo).
     Para modelos OpenAI/ChatGPT y Ollama usa el SDK de OpenAI directamente como fallback si LangChain falla.
     Incluye reintentos con back-off exponencial para errores transitorios.
+    Si se proporciona ``title``, el prompt instruye a la IA a generar el contenido alrededor de ese título.
     """
-    user_prompt = build_generation_prompt(parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
+    user_prompt = build_generation_prompt(parent_name, subcat_name, tag_text, title=title, avoid_titles=avoid_titles, language=language)
 
     raw_text = None
 
@@ -164,10 +165,10 @@ def generate_and_save_article(
         except Exception as e:
             notify("Error enviando prompt por email", str(e), level="warning", always_email=True)
 
-    # Si el título se proporcionó como argumento, generar solo el cuerpo y usarlo directamente
+    # Si el título se proporcionó como argumento, generar el cuerpo con ese título como contexto
     if title:
-        t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, tag_text, avoid_titles=avoid_titles, language=language)
-        # Reemplazar el título generado por el proporcionado
+        t, s, b, kw = generate_article_with_ai(client_ai, parent_name, subcat_name, tag_text, title=title, avoid_titles=avoid_titles, language=language)
+        # Usar el título proporcionado (no el generado por la IA) y ajustar el <h1>
         title, summary, body, keywords = title, s, _replace_h1(b, title), kw
     else:
         max_attempts = config.MAX_TITLE_RETRIES

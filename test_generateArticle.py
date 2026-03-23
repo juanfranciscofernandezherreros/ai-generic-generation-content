@@ -282,6 +282,28 @@ class TestBuildGenerationPrompt:
         assert "FAQ" in prompt
         assert "JSON" in prompt
 
+    def test_with_title_includes_exact_title_instruction(self):
+        """When title is provided, the prompt must instruct the AI to use it exactly."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag", title="Mi Título Exacto")
+        assert "Mi Título Exacto" in prompt
+        assert "EXACTAMENTE" in prompt
+
+    def test_with_title_does_not_include_seo_title_instruction(self):
+        """When title is provided, the generic SEO title instruction should not appear."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag", title="Mi Título Exacto")
+        assert "máx. 60 caracteres" not in prompt
+
+    def test_without_title_includes_seo_title_instruction(self):
+        """When title is not provided, the generic SEO title instruction should appear."""
+        prompt = build_generation_prompt("Cat", "Sub", "Tag")
+        assert "máx. 60 caracteres" in prompt
+
+    def test_with_none_title_behaves_same_as_no_title(self):
+        """Passing title=None should behave identically to not passing a title."""
+        prompt_no_title = build_generation_prompt("Cat", "Sub", "Tag")
+        prompt_none_title = build_generation_prompt("Cat", "Sub", "Tag", title=None)
+        assert prompt_no_title == prompt_none_title
+
 
 # ---- Constants ----
 class TestConstants:
@@ -929,6 +951,28 @@ class TestGenerateArticleWithAILangchain:
         mock_client = MagicMock()
         with pytest.raises(ValueError):
             generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
+
+    @patch("article_generator.build_generation_prompt")
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    def test_title_passed_to_prompt_builder(self, mock_lc, mock_prompt):
+        """When title is provided, it must be forwarded to build_generation_prompt."""
+        mock_prompt.return_value = "mocked prompt"
+        mock_client = MagicMock()
+        generate_article_with_ai(mock_client, "Cat", "Sub", "Tag", title="Título Proporcionado")
+        mock_prompt.assert_called_once()
+        _, kwargs = mock_prompt.call_args
+        assert kwargs.get("title") == "Título Proporcionado"
+
+    @patch("article_generator.build_generation_prompt")
+    @patch("article_generator._generate_with_langchain", return_value=_VALID_ARTICLE_JSON)
+    def test_no_title_passes_none_to_prompt_builder(self, mock_lc, mock_prompt):
+        """When title is not provided, build_generation_prompt receives title=None."""
+        mock_prompt.return_value = "mocked prompt"
+        mock_client = MagicMock()
+        generate_article_with_ai(mock_client, "Cat", "Sub", "Tag")
+        mock_prompt.assert_called_once()
+        _, kwargs = mock_prompt.call_args
+        assert kwargs.get("title") is None
 
 
 # ---- LangChain integration: generate_title_with_ai (LangChain primary path) ----
@@ -1635,6 +1679,53 @@ class TestGenerateAndSaveArticle:
                 raw = f.read()
             # ensure_ascii=False means accented chars should appear literally
             assert "Subcategor" in raw
+        finally:
+            os.unlink(path)
+
+    @patch("article_generator.generate_article_with_ai")
+    def test_provided_title_used_in_output(self, mock_gen_ai):
+        """When title is provided, the output JSON must use that title (not the AI-generated one)."""
+        mock_gen_ai.return_value = (
+            "Título de la IA",
+            "Resumen generado",
+            "<h1>Título de la IA</h1><p>Contenido.</p>",
+            ["keyword1"],
+        )
+        mock_client = MagicMock()
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            path = tmp.name
+        try:
+            generate_and_save_article(
+                mock_client, "Spring Boot", "Cat", "Sub",
+                output_path=path,
+                title="Mi Título Personalizado",
+            )
+            with open(path, encoding="utf-8") as f:
+                doc = json.load(f)
+            assert doc["title"] == "Mi Título Personalizado"
+        finally:
+            os.unlink(path)
+
+    @patch("article_generator.generate_article_with_ai")
+    def test_provided_title_passed_to_generate_article_with_ai(self, mock_gen_ai):
+        """When title is provided, generate_article_with_ai must be called with that title."""
+        mock_gen_ai.return_value = (
+            "Título de la IA",
+            "Resumen generado",
+            "<h1>Título de la IA</h1><p>Contenido.</p>",
+            ["keyword1"],
+        )
+        mock_client = MagicMock()
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            path = tmp.name
+        try:
+            generate_and_save_article(
+                mock_client, "Spring Boot", "Cat", "Sub",
+                output_path=path,
+                title="Mi Título Personalizado",
+            )
+            _, kwargs = mock_gen_ai.call_args
+            assert kwargs.get("title") == "Mi Título Personalizado"
         finally:
             os.unlink(path)
 

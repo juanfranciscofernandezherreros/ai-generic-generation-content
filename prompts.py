@@ -5,7 +5,7 @@ from utils import html_escape
 from notifications import send_notification_email
 
 
-def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str | None = None, avoid_titles: list[str] | None = None, language: str = config.ARTICLE_LANGUAGE) -> str:
+def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str | None = None, title: str | None = None, avoid_titles: list[str] | None = None, language: str = config.ARTICLE_LANGUAGE) -> str:
     avoid_titles = avoid_titles or []
     avoid_block = ""
     if avoid_titles:
@@ -16,10 +16,14 @@ def build_generation_prompt(parent_name: str, subcat_name: str, tag_text: str | 
         )
     lang = config._language_name(language)
     topic = f'sobre "{tag_text}" ' if tag_text else ""
+    if title:
+        title_instruction = f'title: usa EXACTAMENTE este título: "{title}". No lo modifiques.'
+    else:
+        title_instruction = "title: optimizado para SEO y CTR, conciso (máx. 60 caracteres), incluye palabra clave principal al inicio."
     return f"""Artículo SEO en {lang} {topic}(categoría: "{parent_name}", subcategoría: "{subcat_name}").
 Devuelve SOLO JSON: {{"title":"...","summary":"...","body":"...","keywords":[...]}}
 
-title: optimizado para SEO y CTR, conciso (máx. 60 caracteres), incluye palabra clave principal al inicio.
+{title_instruction}
 summary: meta-descripción SEO (máx. 160 caracteres), incluye palabra clave, llamada a la acción implícita.
 keywords: 5-7 palabras clave SEO en minúsculas (long-tail incluidas), sin repetir el título exacto.
 body (HTML semántico bien cerrado, optimizado para SEO on-page):
