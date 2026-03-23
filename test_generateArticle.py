@@ -336,7 +336,143 @@ class TestConstants:
         assert len(TITLE_SYSTEM_MSG) > 0
 
 
-# ---- OUTPUT_FILENAME env var with regex validation ----
+# ---- Constants overridable via environment variables ----
+class TestConstantsFromEnv:
+    """Tests that numeric and string constants can be overridden via env vars."""
+
+    def test_similarity_threshold_default_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"SIMILARITY_THRESHOLD_DEFAULT": "0.75"}):
+            importlib.reload(_cfg)
+            assert _cfg.SIMILARITY_THRESHOLD_DEFAULT == 0.75
+        importlib.reload(_cfg)
+
+    def test_similarity_threshold_strict_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"SIMILARITY_THRESHOLD_STRICT": "0.90"}):
+            importlib.reload(_cfg)
+            assert _cfg.SIMILARITY_THRESHOLD_STRICT == 0.90
+        importlib.reload(_cfg)
+
+    def test_max_title_retries_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"MAX_TITLE_RETRIES": "10"}):
+            importlib.reload(_cfg)
+            assert _cfg.MAX_TITLE_RETRIES == 10
+        importlib.reload(_cfg)
+
+    def test_openai_max_retries_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OPENAI_MAX_RETRIES": "7"}):
+            importlib.reload(_cfg)
+            assert _cfg.OPENAI_MAX_RETRIES == 7
+        importlib.reload(_cfg)
+
+    def test_openai_retry_base_delay_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OPENAI_RETRY_BASE_DELAY": "5"}):
+            importlib.reload(_cfg)
+            assert _cfg.OPENAI_RETRY_BASE_DELAY == 5
+        importlib.reload(_cfg)
+
+    def test_meta_title_max_length_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"META_TITLE_MAX_LENGTH": "70"}):
+            importlib.reload(_cfg)
+            assert _cfg.META_TITLE_MAX_LENGTH == 70
+        importlib.reload(_cfg)
+
+    def test_meta_description_max_length_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"META_DESCRIPTION_MAX_LENGTH": "200"}):
+            importlib.reload(_cfg)
+            assert _cfg.META_DESCRIPTION_MAX_LENGTH == 200
+        importlib.reload(_cfg)
+
+    def test_max_avoid_titles_in_prompt_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"MAX_AVOID_TITLES_IN_PROMPT": "3"}):
+            importlib.reload(_cfg)
+            assert _cfg.MAX_AVOID_TITLES_IN_PROMPT == 3
+        importlib.reload(_cfg)
+
+    def test_openai_max_article_tokens_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OPENAI_MAX_ARTICLE_TOKENS": "8192"}):
+            importlib.reload(_cfg)
+            assert _cfg.OPENAI_MAX_ARTICLE_TOKENS == 8192
+        importlib.reload(_cfg)
+
+    def test_openai_max_title_tokens_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OPENAI_MAX_TITLE_TOKENS": "200"}):
+            importlib.reload(_cfg)
+            assert _cfg.OPENAI_MAX_TITLE_TOKENS == 200
+        importlib.reload(_cfg)
+
+    def test_ollama_placeholder_api_key_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"OLLAMA_PLACEHOLDER_API_KEY": "custom-key"}):
+            importlib.reload(_cfg)
+            assert _cfg.OLLAMA_PLACEHOLDER_API_KEY == "custom-key"
+        importlib.reload(_cfg)
+
+    def test_generation_system_msg_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"GENERATION_SYSTEM_MSG": "Custom system message"}):
+            importlib.reload(_cfg)
+            assert _cfg.GENERATION_SYSTEM_MSG == "Custom system message"
+        importlib.reload(_cfg)
+
+    def test_title_system_msg_from_env(self):
+        import importlib
+        import config as _cfg
+        with patch.dict(os.environ, {"TITLE_SYSTEM_MSG": "Custom title system message"}):
+            importlib.reload(_cfg)
+            assert _cfg.TITLE_SYSTEM_MSG == "Custom title system message"
+        importlib.reload(_cfg)
+
+    def test_defaults_unchanged_without_env(self):
+        """Without any override, defaults must match documented values."""
+        import importlib
+        import config as _cfg
+        # Remove any potential overrides from the test environment
+        keys = [
+            "SIMILARITY_THRESHOLD_DEFAULT", "SIMILARITY_THRESHOLD_STRICT",
+            "MAX_TITLE_RETRIES", "OPENAI_MAX_RETRIES", "OPENAI_RETRY_BASE_DELAY",
+            "META_TITLE_MAX_LENGTH", "META_DESCRIPTION_MAX_LENGTH",
+            "MAX_AVOID_TITLES_IN_PROMPT", "OPENAI_MAX_ARTICLE_TOKENS",
+            "OPENAI_MAX_TITLE_TOKENS", "OLLAMA_PLACEHOLDER_API_KEY",
+        ]
+        env_without = {k: v for k, v in os.environ.items() if k not in keys}
+        with patch.dict(os.environ, env_without, clear=True):
+            importlib.reload(_cfg)
+            assert _cfg.SIMILARITY_THRESHOLD_DEFAULT == 0.82
+            assert _cfg.SIMILARITY_THRESHOLD_STRICT == 0.86
+            assert _cfg.MAX_TITLE_RETRIES == 5
+            assert _cfg.OPENAI_MAX_RETRIES == 3
+            assert _cfg.OPENAI_RETRY_BASE_DELAY == 2
+            assert _cfg.META_TITLE_MAX_LENGTH == 60
+            assert _cfg.META_DESCRIPTION_MAX_LENGTH == 160
+            assert _cfg.MAX_AVOID_TITLES_IN_PROMPT == 5
+            assert _cfg.OPENAI_MAX_ARTICLE_TOKENS == 4096
+            assert _cfg.OPENAI_MAX_TITLE_TOKENS == 100
+            assert _cfg.OLLAMA_PLACEHOLDER_API_KEY == "ollama"
+        importlib.reload(_cfg)
+
+
 class TestOutputFilename:
     """Tests for OUTPUT_FILENAME env var and OUTPUT_FILENAME_PATTERN regex."""
 

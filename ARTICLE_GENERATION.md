@@ -79,6 +79,19 @@ El script carga su configuración desde un fichero `.env` en el mismo directorio
 | `NOTIFY_VERBOSE` | ❌ | Si es `true` (por defecto), envía email en cada evento; si es `false`, solo en errores/avisos |
 | `SEND_PROMPT_EMAIL` | ❌ | Si es `true`, envía por email el prompt antes de llamar a la IA |
 | `OUTPUT_FILENAME` | ❌ | Nombre del fichero JSON de salida (por defecto `article.json`). Debe terminar en `.json`. Se puede sobreescribir con `--output` en CLI |
+| `SIMILARITY_THRESHOLD_DEFAULT` | ❌ | Umbral de similitud genérico para detección de títulos duplicados (por defecto `0.82`) |
+| `SIMILARITY_THRESHOLD_STRICT` | ❌ | Umbral de similitud estricto al reintentar generación de título único (por defecto `0.86`) |
+| `MAX_TITLE_RETRIES` | ❌ | Intentos máximos para generar un título único (por defecto `5`) |
+| `OPENAI_MAX_RETRIES` | ❌ | Reintentos para llamadas a la API de IA (por defecto `3`) |
+| `OPENAI_RETRY_BASE_DELAY` | ❌ | Segundos base para backoff exponencial entre reintentos (por defecto `2`) |
+| `META_TITLE_MAX_LENGTH` | ❌ | Máximo de caracteres para `metaTitle` SEO (por defecto `60`) |
+| `META_DESCRIPTION_MAX_LENGTH` | ❌ | Máximo de caracteres para `metaDescription` SEO (por defecto `160`) |
+| `MAX_AVOID_TITLES_IN_PROMPT` | ❌ | Máximo de títulos a incluir en el prompt para evitar repeticiones (por defecto `5`) |
+| `OPENAI_MAX_ARTICLE_TOKENS` | ❌ | Límite de tokens de salida para artículos (por defecto `4096`) |
+| `OPENAI_MAX_TITLE_TOKENS` | ❌ | Límite de tokens de salida para títulos (por defecto `100`) |
+| `OLLAMA_PLACEHOLDER_API_KEY` | ❌ | Clave ficticia para Ollama cuando no se requiere autenticación (por defecto `ollama`) |
+| `GENERATION_SYSTEM_MSG` | ❌ | Mensaje de sistema para la generación de artículos (sobrescribe el texto por defecto) |
+| `TITLE_SYSTEM_MSG` | ❌ | Mensaje de sistema para la generación de títulos (sobrescribe el texto por defecto) |
 
 ### Argumentos CLI
 

@@ -90,6 +90,19 @@ Abre `.env` con tu editor y configura el proveedor de IA que quieras usar (ver s
 | `NOTIFY_VERBOSE` | ❌ opcional | `true` | Enviar emails detallados (`true`/`false`). |
 | `SEND_PROMPT_EMAIL` | ❌ opcional | `false` | Enviar el prompt por email antes de llamar a la IA (útil para depuración). |
 | `OUTPUT_FILENAME` | ❌ opcional | `article.json` | Nombre (y ruta relativa) del fichero JSON de salida. Debe acabar en `.json` (p. ej. `output/my-article.json`). Sobreescribible con `--output` en CLI. |
+| `SIMILARITY_THRESHOLD_DEFAULT` | ❌ opcional | `0.82` | Umbral de similitud genérico para detección de títulos duplicados. |
+| `SIMILARITY_THRESHOLD_STRICT` | ❌ opcional | `0.86` | Umbral de similitud estricto usado al reintentar generación de título único. |
+| `MAX_TITLE_RETRIES` | ❌ opcional | `5` | Intentos máximos para generar un título único. |
+| `OPENAI_MAX_RETRIES` | ❌ opcional | `3` | Reintentos para llamadas a la API de IA. |
+| `OPENAI_RETRY_BASE_DELAY` | ❌ opcional | `2` | Segundos base para backoff exponencial entre reintentos. |
+| `META_TITLE_MAX_LENGTH` | ❌ opcional | `60` | Máximo de caracteres para `metaTitle` SEO. |
+| `META_DESCRIPTION_MAX_LENGTH` | ❌ opcional | `160` | Máximo de caracteres para `metaDescription` SEO. |
+| `MAX_AVOID_TITLES_IN_PROMPT` | ❌ opcional | `5` | Máximo de títulos previos a incluir en el prompt para evitar repeticiones. |
+| `OPENAI_MAX_ARTICLE_TOKENS` | ❌ opcional | `4096` | Límite de tokens de salida para artículos. |
+| `OPENAI_MAX_TITLE_TOKENS` | ❌ opcional | `100` | Límite de tokens de salida para títulos. |
+| `OLLAMA_PLACEHOLDER_API_KEY` | ❌ opcional | `ollama` | Clave ficticia para Ollama cuando no se requiere autenticación. |
+| `GENERATION_SYSTEM_MSG` | ❌ opcional | *(texto por defecto)* | Mensaje de sistema para la generación de artículos (sobrescribe el prompt de rol predefinido). |
+| `TITLE_SYSTEM_MSG` | ❌ opcional | *(texto por defecto)* | Mensaje de sistema para la generación de títulos (sobrescribe el prompt de rol predefinido). |
 
 ### 3. Crear el entorno virtual e instalar dependencias
 
@@ -1202,9 +1215,9 @@ Durante la ejecución, el script puede mandarte distintos tipos de mensajes por 
 
 ## ⚙️ Constantes y configuración interna
 
-Las constantes del proyecto se definen en `config.py`:
+Las constantes del proyecto se definen en `config.py` y pueden sobrescribirse mediante variables de entorno (o el fichero `.env`):
 
-| Constante | Valor | Descripción |
+| Variable de entorno / Constante | Valor por defecto | Descripción |
 |---|---|---|
 | `SIMILARITY_THRESHOLD_DEFAULT` | `0.82` | Umbral para detección genérica de títulos similares |
 | `SIMILARITY_THRESHOLD_STRICT` | `0.86` | Umbral usado al reintentar generación de título único |
@@ -1216,6 +1229,9 @@ Las constantes del proyecto se definen en `config.py`:
 | `MAX_AVOID_TITLES_IN_PROMPT` | `5` | Máximo de títulos a incluir en el prompt (para mantener prompts cortos) |
 | `OPENAI_MAX_ARTICLE_TOKENS` | `4096` | Límite de tokens de salida para artículos |
 | `OPENAI_MAX_TITLE_TOKENS` | `100` | Límite de tokens de salida para títulos |
+| `OLLAMA_PLACEHOLDER_API_KEY` | `ollama` | Clave ficticia para Ollama (no requiere autenticación) |
+| `GENERATION_SYSTEM_MSG` | *(texto por defecto)* | Mensaje de sistema para generación de artículos |
+| `TITLE_SYSTEM_MSG` | *(texto por defecto)* | Mensaje de sistema para generación de títulos |
 
 ### Idiomas soportados (`ARTICLE_LANGUAGE`)
 

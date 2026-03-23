@@ -11,26 +11,39 @@ Responsabilidades:
 - Ofrece el mapa de idiomas soportados y la función auxiliar ``_language_name``.
 
 Variables de entorno reconocidas:
-    OPENAIAPIKEY            — Clave de API de OpenAI (obligatoria con modelos ``gpt-*``).
-    GEMINI_API_KEY          — Clave de API de Google Gemini (obligatoria con modelos ``gemini-*``).
-    OLLAMA_BASE_URL         — URL del servidor Ollama local (p. ej. ``http://localhost:11434/v1``).
-    OPENAI_MODEL            — Nombre del modelo de IA (por defecto ``gpt-4o``).
-    AI_PROVIDER             — Proveedor de IA: ``auto`` | ``openai`` | ``gemini`` | ``ollama``.
-    SITE                    — URL base del sitio web (p. ej. ``https://tusitio.com``).
-    AUTHOR_USERNAME         — Nombre del autor de los artículos (por defecto ``adminUser``).
-    ARTICLE_LANGUAGE        — Código ISO 639-1 del idioma (por defecto ``es``).
-    AI_TEMPERATURE_ARTICLE  — Temperatura de generación del artículo (por defecto ``0.7``).
-    AI_TEMPERATURE_TITLE    — Temperatura de generación del título (por defecto ``0.9``).
-    OUTPUT_FILENAME         — Nombre del fichero JSON de salida (por defecto ``article.json``).
-    SEND_EMAILS             — Activar/desactivar envío de emails (por defecto ``true``).
-    SMTP_HOST               — Servidor SMTP para notificaciones.
-    SMTP_PORT               — Puerto SMTP (por defecto ``587``).
-    SMTP_USER               — Usuario SMTP.
-    SMTP_PASS               — Contraseña SMTP.
-    FROM_EMAIL              — Dirección de origen del email.
-    NOTIFY_EMAIL            — Dirección de destino de las notificaciones.
-    NOTIFY_VERBOSE          — Enviar emails detallados (por defecto ``true``).
-    SEND_PROMPT_EMAIL       — Enviar el prompt por email antes de llamar a la IA (por defecto ``false``).
+    OPENAIAPIKEY                — Clave de API de OpenAI (obligatoria con modelos ``gpt-*``).
+    GEMINI_API_KEY              — Clave de API de Google Gemini (obligatoria con modelos ``gemini-*``).
+    OLLAMA_BASE_URL             — URL del servidor Ollama local (p. ej. ``http://localhost:11434/v1``).
+    OPENAI_MODEL                — Nombre del modelo de IA (por defecto ``gpt-4o``).
+    AI_PROVIDER                 — Proveedor de IA: ``auto`` | ``openai`` | ``gemini`` | ``ollama``.
+    SITE                        — URL base del sitio web (p. ej. ``https://tusitio.com``).
+    AUTHOR_USERNAME             — Nombre del autor de los artículos (por defecto ``adminUser``).
+    ARTICLE_LANGUAGE            — Código ISO 639-1 del idioma (por defecto ``es``).
+    AI_TEMPERATURE_ARTICLE      — Temperatura de generación del artículo (por defecto ``0.7``).
+    AI_TEMPERATURE_TITLE        — Temperatura de generación del título (por defecto ``0.9``).
+    OUTPUT_FILENAME             — Nombre del fichero JSON de salida (por defecto ``article.json``).
+    SEND_EMAILS                 — Activar/desactivar envío de emails (por defecto ``true``).
+    SMTP_HOST                   — Servidor SMTP para notificaciones.
+    SMTP_PORT                   — Puerto SMTP (por defecto ``587``).
+    SMTP_USER                   — Usuario SMTP.
+    SMTP_PASS                   — Contraseña SMTP.
+    FROM_EMAIL                  — Dirección de origen del email.
+    NOTIFY_EMAIL                — Dirección de destino de las notificaciones.
+    NOTIFY_VERBOSE              — Enviar emails detallados (por defecto ``true``).
+    SEND_PROMPT_EMAIL           — Enviar el prompt por email antes de llamar a la IA (por defecto ``false``).
+    SIMILARITY_THRESHOLD_DEFAULT — Umbral de similitud genérico (por defecto ``0.82``).
+    SIMILARITY_THRESHOLD_STRICT  — Umbral de similitud estricto al reintentar títulos (por defecto ``0.86``).
+    MAX_TITLE_RETRIES           — Intentos máximos para generar título único (por defecto ``5``).
+    OPENAI_MAX_RETRIES          — Reintentos para llamadas a la API de IA (por defecto ``3``).
+    OPENAI_RETRY_BASE_DELAY     — Segundos base para backoff exponencial (por defecto ``2``).
+    META_TITLE_MAX_LENGTH       — Máximo de caracteres para metaTitle SEO (por defecto ``60``).
+    META_DESCRIPTION_MAX_LENGTH — Máximo de caracteres para metaDescription SEO (por defecto ``160``).
+    MAX_AVOID_TITLES_IN_PROMPT  — Máximo de títulos a incluir en el prompt (por defecto ``5``).
+    OPENAI_MAX_ARTICLE_TOKENS   — Límite de tokens de salida para artículos (por defecto ``4096``).
+    OPENAI_MAX_TITLE_TOKENS     — Límite de tokens de salida para títulos (por defecto ``100``).
+    OLLAMA_PLACEHOLDER_API_KEY  — Clave ficticia para Ollama (por defecto ``ollama``).
+    GENERATION_SYSTEM_MSG       — Mensaje de sistema para generación de artículos (sobrescribible).
+    TITLE_SYSTEM_MSG            — Mensaje de sistema para generación de títulos (sobrescribible).
 """
 from __future__ import annotations
 
@@ -95,17 +108,17 @@ AI_TEMPERATURE_ARTICLE = float(os.getenv("AI_TEMPERATURE_ARTICLE", "0.7"))
 AI_TEMPERATURE_TITLE   = float(os.getenv("AI_TEMPERATURE_TITLE",   "0.9"))
 
 # ============ CONSTANTS ============
-SIMILARITY_THRESHOLD_DEFAULT = 0.82   # umbral para is_too_similar genérico
-SIMILARITY_THRESHOLD_STRICT  = 0.86   # umbral usado al reintentar títulos
-MAX_TITLE_RETRIES            = 5      # intentos máx. para generar título único
-OPENAI_MAX_RETRIES           = 3      # reintentos para llamadas a OpenAI
-OPENAI_RETRY_BASE_DELAY      = 2      # seg. base para backoff exponencial
-META_TITLE_MAX_LENGTH        = 60     # máx. caracteres para metaTitle SEO
-META_DESCRIPTION_MAX_LENGTH  = 160    # máx. caracteres para metaDescription SEO
-MAX_AVOID_TITLES_IN_PROMPT   = 5      # máx. títulos a incluir en el prompt (mantiene prompts cortos)
-OPENAI_MAX_ARTICLE_TOKENS    = 4096   # límite de tokens de salida para artículos
-OPENAI_MAX_TITLE_TOKENS      = 100    # límite de tokens de salida para títulos
-OLLAMA_PLACEHOLDER_API_KEY   = "ollama"  # clave ficticia para Ollama (no requiere autenticación)
+SIMILARITY_THRESHOLD_DEFAULT = float(os.getenv("SIMILARITY_THRESHOLD_DEFAULT", "0.82"))   # umbral para is_too_similar genérico
+SIMILARITY_THRESHOLD_STRICT  = float(os.getenv("SIMILARITY_THRESHOLD_STRICT",  "0.86"))   # umbral usado al reintentar títulos
+MAX_TITLE_RETRIES            = int(os.getenv("MAX_TITLE_RETRIES",            "5"))         # intentos máx. para generar título único
+OPENAI_MAX_RETRIES           = int(os.getenv("OPENAI_MAX_RETRIES",           "3"))         # reintentos para llamadas a OpenAI
+OPENAI_RETRY_BASE_DELAY      = int(os.getenv("OPENAI_RETRY_BASE_DELAY",      "2"))         # seg. base para backoff exponencial
+META_TITLE_MAX_LENGTH        = int(os.getenv("META_TITLE_MAX_LENGTH",        "60"))        # máx. caracteres para metaTitle SEO
+META_DESCRIPTION_MAX_LENGTH  = int(os.getenv("META_DESCRIPTION_MAX_LENGTH",  "160"))       # máx. caracteres para metaDescription SEO
+MAX_AVOID_TITLES_IN_PROMPT   = int(os.getenv("MAX_AVOID_TITLES_IN_PROMPT",   "5"))         # máx. títulos a incluir en el prompt (mantiene prompts cortos)
+OPENAI_MAX_ARTICLE_TOKENS    = int(os.getenv("OPENAI_MAX_ARTICLE_TOKENS",    "4096"))      # límite de tokens de salida para artículos
+OPENAI_MAX_TITLE_TOKENS      = int(os.getenv("OPENAI_MAX_TITLE_TOKENS",      "100"))       # límite de tokens de salida para títulos
+OLLAMA_PLACEHOLDER_API_KEY   = os.getenv("OLLAMA_PLACEHOLDER_API_KEY", "ollama")          # clave ficticia para Ollama (no requiere autenticación)
 
 # ============ IDIOMAS ============
 # Mapa de códigos ISO 639-1 a nombres de idioma (escritos en español, para usar en los prompts)
@@ -130,7 +143,7 @@ def _language_name(code: str) -> str:
     return _LANGUAGE_NAMES.get(code.lower(), code)
 
 # ============ SYSTEM MESSAGES (reutilizados en ambas APIs) ============
-GENERATION_SYSTEM_MSG = (
+_GENERATION_SYSTEM_MSG_DEFAULT = (
     "Eres redactor técnico sénior y experto en SEO especializado en tecnología y desarrollo de software. "
     "Generas contenido optimizado para motores de búsqueda con HTML semántico, "
     "estructura de encabezados jerárquica (h1 > h2 > h3), uso estratégico de palabras clave "
@@ -138,7 +151,9 @@ GENERATION_SYSTEM_MSG = (
     "El contenido que redactas está siempre relacionado con la categoría y el tag indicados en el prompt. "
     "Devuelves SOLO JSON válido con: title, summary, body (HTML semántico), keywords."
 )
-TITLE_SYSTEM_MSG = (
+_TITLE_SYSTEM_MSG_DEFAULT = (
     "Eres experto en SEO técnico. "
     "Devuelve solo el título solicitado, sin comillas ni texto adicional."
 )
+GENERATION_SYSTEM_MSG = os.getenv("GENERATION_SYSTEM_MSG", _GENERATION_SYSTEM_MSG_DEFAULT)
+TITLE_SYSTEM_MSG      = os.getenv("TITLE_SYSTEM_MSG",      _TITLE_SYSTEM_MSG_DEFAULT)
