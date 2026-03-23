@@ -2009,3 +2009,295 @@ class TestPromptWithoutTag:
         prompt = build_title_prompt("Spring Boot", "Lombok", None)
         assert "Spring Boot" in prompt
         assert "None" not in prompt
+
+
+# ---- Sequential mode: _run_sequential() ----
+class TestRunSequential:
+    """Tests for the _run_sequential() function."""
+
+    def _make_args(self, **kwargs):
+        """Build a minimal argparse.Namespace for testing."""
+        import argparse
+        defaults = dict(
+            tag=None,
+            category=None,
+            subcategory="General",
+            username="adminUser",
+            site="",
+            language="es",
+            title=None,
+            avoid_titles="",
+        )
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_returns_count_of_successful_articles(self, mock_gen):
+        """_run_sequential returns the number of successfully generated articles."""
+        from generateArticle import _run_sequential
+        items = [
+            {"category": "Spring Boot", "tag": "Lombok"},
+            {"category": "Java", "tag": "Streams"},
+        ]
+        args = self._make_args()
+        result = _run_sequential(items, None, args)
+        assert result == 2
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_calls_generate_for_each_item(self, mock_gen):
+        """_run_sequential calls generate_and_save_article once per valid item."""
+        from generateArticle import _run_sequential
+        items = [
+            {"category": "Spring Boot"},
+            {"category": "Java"},
+            {"category": "Docker"},
+        ]
+        args = self._make_args()
+        _run_sequential(items, None, args)
+        assert mock_gen.call_count == 3
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_item_overrides_category(self, mock_gen):
+        """Per-item 'category' overrides args.category."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Docker"}]
+        args = self._make_args(category="Spring Boot")
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert kwargs["parent_name"] == "Docker"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_args_category_used_as_fallback(self, mock_gen):
+        """args.category is used when item does not specify 'category'."""
+        from generateArticle import _run_sequential
+        items = [{"tag": "Lombok"}]
+        args = self._make_args(category="Spring Boot")
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert kwargs["parent_name"] == "Spring Boot"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_item_overrides_tag(self, mock_gen):
+        """Per-item 'tag' overrides args.tag."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java", "tag": "Streams"}]
+        args = self._make_args(tag="Lombok")
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert kwargs["tag_text"] == "Streams"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_default_output_filename_uses_index(self, mock_gen):
+        """Output filename defaults to article_{n}.json when not specified per item."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java"}, {"category": "Spring Boot"}]
+        args = self._make_args()
+        _run_sequential(items, None, args)
+        calls = mock_gen.call_args_list
+        assert calls[0][1]["output_path"] == "article_1.json"
+        assert calls[1][1]["output_path"] == "article_2.json"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_item_output_overrides_default(self, mock_gen):
+        """Per-item 'output' overrides the default article_{n}.json."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java", "output": "custom.json"}]
+        args = self._make_args()
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert kwargs["output_path"] == "custom.json"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_skips_items_without_category(self, mock_gen):
+        """Items without 'category' (and no args.category fallback) are skipped."""
+        from generateArticle import _run_sequential
+        items = [{"tag": "Lombok"}, {"category": "Java"}]
+        args = self._make_args(category=None)
+        result = _run_sequential(items, None, args)
+        assert mock_gen.call_count == 1
+        assert result == 1
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_avoid_titles_string_parsed(self, mock_gen):
+        """'avoid_titles' as semicolon-separated string is parsed into a list."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java", "avoid_titles": "Title A;Title B"}]
+        args = self._make_args()
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert "Title A" in kwargs["avoid_titles"]
+        assert "Title B" in kwargs["avoid_titles"]
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_avoid_titles_list_accepted(self, mock_gen):
+        """'avoid_titles' as a JSON list is passed through correctly."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java", "avoid_titles": ["Title A", "Title B"]}]
+        args = self._make_args()
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert "Title A" in kwargs["avoid_titles"]
+        assert "Title B" in kwargs["avoid_titles"]
+
+    @patch("generateArticle.generate_and_save_article", side_effect=RuntimeError("AI failure"))
+    def test_continues_after_item_exception(self, mock_gen):
+        """An exception in one item does not abort remaining items."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java"}, {"category": "Spring Boot"}]
+        args = self._make_args()
+        result = _run_sequential(items, None, args)
+        assert mock_gen.call_count == 2
+        assert result == 0
+
+    @patch("generateArticle.generate_and_save_article", return_value=False)
+    def test_failed_generation_not_counted(self, mock_gen):
+        """Articles where generate_and_save_article returns False are not counted."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java"}]
+        args = self._make_args()
+        result = _run_sequential(items, None, args)
+        assert result == 0
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_item_overrides_language(self, mock_gen):
+        """Per-item 'language' overrides args.language."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java", "language": "en"}]
+        args = self._make_args(language="es")
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert kwargs["language"] == "en"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_item_overrides_title(self, mock_gen):
+        """Per-item 'title' overrides args.title."""
+        from generateArticle import _run_sequential
+        items = [{"category": "Java", "title": "My Custom Title"}]
+        args = self._make_args(title=None)
+        _run_sequential(items, None, args)
+        _, kwargs = mock_gen.call_args
+        assert kwargs["title"] == "My Custom Title"
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    def test_empty_list_returns_zero(self, mock_gen):
+        """An empty items list returns 0 (nothing to generate)."""
+        from generateArticle import _run_sequential
+        result = _run_sequential([], None, self._make_args())
+        assert result == 0
+        mock_gen.assert_not_called()
+
+
+# ---- CLI: main() --sequential argument ----
+class TestMainSequentialCli:
+    """Tests for the --sequential CLI argument in main()."""
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_sequential_mode_reads_json_file(self, mock_openai_cls, mock_gen):
+        """--sequential reads a JSON array file and calls generate_and_save_article for each entry."""
+        import sys
+        import tempfile
+
+        from generateArticle import main
+        items = [
+            {"category": "Spring Boot", "tag": "Lombok"},
+            {"category": "Java", "tag": "Streams"},
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump(items, f)
+            tmp_path = f.name
+        try:
+            with patch.object(sys, "argv", ["generateArticle.py", "--sequential", tmp_path]):
+                main()
+        finally:
+            os.unlink(tmp_path)
+        assert mock_gen.call_count == 2
+
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_sequential_mode_exits_on_missing_file(self):
+        """--sequential exits with code 1 when JSON file is not found."""
+        import sys
+
+        from generateArticle import main
+        with patch.object(sys, "argv", ["generateArticle.py", "--sequential", "/nonexistent/file.json"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 1
+
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_sequential_mode_exits_on_invalid_json(self):
+        """--sequential exits with code 1 when JSON file is malformed."""
+        import sys
+        import tempfile
+
+        from generateArticle import main
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            f.write("this is not json")
+            tmp_path = f.name
+        try:
+            with patch.object(sys, "argv", ["generateArticle.py", "--sequential", tmp_path]):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+        finally:
+            os.unlink(tmp_path)
+        assert exc_info.value.code == 1
+
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_sequential_mode_exits_when_json_is_not_array(self):
+        """--sequential exits with code 1 when JSON file does not contain an array."""
+        import sys
+        import tempfile
+
+        from generateArticle import main
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump({"category": "Java"}, f)
+            tmp_path = f.name
+        try:
+            with patch.object(sys, "argv", ["generateArticle.py", "--sequential", tmp_path]):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+        finally:
+            os.unlink(tmp_path)
+        assert exc_info.value.code == 1
+
+    @patch("generateArticle.generate_and_save_article", return_value=True)
+    @patch("generateArticle.OpenAI")
+    @patch("generateArticle.OPENAIAPIKEY", "fake-key")
+    @patch("generateArticle.OPENAI_MODEL", "gpt-4o")
+    def test_sequential_mode_cli_category_as_fallback(self, mock_openai_cls, mock_gen):
+        """In --sequential mode, --category CLI arg is used as fallback for items without category."""
+        import sys
+        import tempfile
+
+        from generateArticle import main
+        items = [{"tag": "Lombok"}]  # no 'category' key
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            json.dump(items, f)
+            tmp_path = f.name
+        try:
+            with patch.object(sys, "argv", [
+                "generateArticle.py",
+                "--sequential", tmp_path,
+                "--category", "Spring Boot",
+            ]):
+                main()
+        finally:
+            os.unlink(tmp_path)
+        mock_gen.assert_called_once()
+        _, kwargs = mock_gen.call_args
+        assert kwargs["parent_name"] == "Spring Boot"
+
+    def test_individual_mode_requires_category(self):
+        """Without --sequential, omitting --category exits with code 2."""
+        import sys
+
+        from generateArticle import main
+        with patch.object(sys, "argv", ["generateArticle.py", "--tag", "Lombok"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 2

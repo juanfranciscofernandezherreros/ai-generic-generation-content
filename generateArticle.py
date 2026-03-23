@@ -18,6 +18,7 @@ Submódulos:
 from __future__ import annotations
 
 import argparse
+import json
 import smtplib  # noqa: F401 – re-exportado para compatibilidad con tests
 import sys
 
@@ -113,6 +114,85 @@ from article_generator import (  # noqa: F401
 )
 
 
+# ============ SEQUENTIAL MODE ============
+def _run_sequential(items: list[dict], client_ai: OpenAI | None, args: argparse.Namespace) -> int:
+    """Genera artículos de forma secuencial a partir de una lista de configuraciones.
+
+    Cada elemento de *items* puede sobreescribir cualquier parámetro de generación.
+    Los valores de *args* actúan como valores por defecto para los campos no indicados
+    en cada entrada.
+
+    Args:
+        items:      Lista de diccionarios con las configuraciones de cada artículo.
+        client_ai:  Cliente de IA ya inicializado (OpenAI / Ollama).
+        args:       Namespace de argparse con los valores por defecto del CLI.
+
+    Returns:
+        Número de artículos generados con éxito.
+    """
+    total = len(items)
+    ok = 0
+    for n, item in enumerate(items, start=1):
+        tag        = item.get("tag",        args.tag)
+        category   = item.get("category",   getattr(args, "category", None))
+        subcategory = item.get("subcategory", args.subcategory)
+        output     = item.get("output",     f"article_{n}.json")
+        username   = item.get("username",   args.username)
+        site       = item.get("site",       args.site)
+        language   = item.get("language",   args.language)
+        title      = item.get("title",      args.title)
+
+        raw_avoid = item.get("avoid_titles", "")
+        if isinstance(raw_avoid, list):
+            avoid_titles = [str(t).strip() for t in raw_avoid if str(t).strip()]
+        else:
+            avoid_titles = [t.strip() for t in str(raw_avoid).split(";") if t.strip()]
+
+        if not category:
+            notify(
+                f"Entrada {n}/{total} — sin categoría",
+                "El campo 'category' es obligatorio. Entrada omitida.",
+                level="warning",
+                always_email=True,
+            )
+            print(f"\n⚠️  [{n}/{total}] Entrada omitida: falta el campo 'category'.")
+            continue
+
+        notify(
+            f"Inicio entrada {n}/{total}",
+            f"Categoría: {category} | Tag: {tag} | Salida: {output}",
+            level="info",
+            always_email=True,
+        )
+        print(f"\n▶  [{n}/{total}] Generando artículo: categoría='{category}', tag='{tag}', salida='{output}'")
+
+        try:
+            created = generate_and_save_article(
+                client_ai=client_ai,
+                tag_text=tag,
+                parent_name=category,
+                subcat_name=subcategory,
+                avoid_titles=avoid_titles,
+                author_name=username,
+                site=site,
+                language=language,
+                output_path=output,
+                title=title,
+            )
+        except Exception as e:
+            notify(f"Error entrada {n}/{total}", str(e), level="error", always_email=True)
+            print(f"\n❌ [{n}/{total}] Error: {e}")
+            continue
+
+        if created:
+            ok += 1
+            print(f"\n✅ [{n}/{total}] Artículo guardado en '{output}'.")
+        else:
+            print(f"\n⚠️  [{n}/{total}] No se pudo generar el artículo para '{category}'.")
+
+    return ok
+
+
 # ============ MAIN ============
 def main():
     parser = argparse.ArgumentParser(
@@ -121,8 +201,8 @@ def main():
     )
     parser.add_argument("--tag", "-t", default=None,
                         help="Tema o tag del artículo (opcional)")
-    parser.add_argument("--category", "-c", required=True,
-                        help="Nombre de la categoría padre (requerido)")
+    parser.add_argument("--category", "-c", default=None,
+                        help="Nombre de la categoría padre (requerido en modo individual)")
     parser.add_argument("--subcategory", "-s", default="General",
                         help="Nombre de la subcategoría")
     parser.add_argument("--output", "-o", default=OUTPUT_FILENAME,
@@ -145,7 +225,19 @@ def main():
                              "También configurable con AI_PROVIDER en .env")
     parser.add_argument("--avoid-titles", default="",
                         help="Títulos a evitar, separados por ';'")
+    parser.add_argument("--sequential", "-q",
+                        default=None,
+                        metavar="FICHERO_JSON",
+                        help="Ruta a un fichero JSON con un array de configuraciones. "
+                             "Genera cada artículo de forma secuencial. "
+                             "Cada entrada acepta: tag, category, subcategory, output, "
+                             "username, site, language, title, avoid_titles. "
+                             "Los argumentos CLI actúan como valores por defecto.")
     args = parser.parse_args()
+
+    # En modo individual --category es obligatorio
+    if args.sequential is None and not args.category:
+        parser.error("El argumento --category / -c es obligatorio en modo individual.")
 
     # Aplicar el proveedor de IA seleccionado por CLI (sobreescribe AI_PROVIDER del .env)
     if args.provider is not None:
@@ -189,6 +281,41 @@ def main():
     else:
         notify("Gemini listo", f"Modelo: {OPENAI_MODEL}", level="info", always_email=True)
 
+    # ── Modo secuencial ──────────────────────────────────────────────────
+    if args.sequential is not None:
+        try:
+            with open(args.sequential, encoding="utf-8") as fh:
+                items = json.load(fh)
+        except FileNotFoundError:
+            notify("Error", f"Fichero no encontrado: {args.sequential}", level="error", always_email=True)
+            print(f"\n❌ Fichero no encontrado: {args.sequential}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            notify("Error", f"JSON inválido en '{args.sequential}': {e}", level="error", always_email=True)
+            print(f"\n❌ JSON inválido en '{args.sequential}': {e}")
+            sys.exit(1)
+
+        if not isinstance(items, list):
+            notify("Error", "El fichero JSON debe contener un array de configuraciones.", level="error", always_email=True)
+            print("\n❌ El fichero JSON debe contener un array de configuraciones.")
+            sys.exit(1)
+
+        total = len(items)
+        notify("Modo secuencial", f"Se procesarán {total} artículo(s).", level="info", always_email=True)
+        print(f"\n📋 Modo secuencial: {total} artículo(s) a generar.")
+
+        ok = _run_sequential(items, client_ai, args)
+
+        notify(
+            "Proceso secuencial terminado",
+            f"{ok}/{total} artículo(s) generados con éxito.",
+            level="success" if ok == total else "warning",
+            always_email=True,
+        )
+        print(f"\n🟩 Proceso terminado. {ok}/{total} artículo(s) generados con éxito.")
+        return
+
+    # ── Modo individual ──────────────────────────────────────────────────
     try:
         created = generate_and_save_article(
             client_ai=client_ai,

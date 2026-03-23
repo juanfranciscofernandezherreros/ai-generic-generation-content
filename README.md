@@ -130,7 +130,7 @@ python3 generateArticle.py \
 
 | Argumento | Obligatorio | Descripción | Por defecto |
 |---|---|---|---|
-| `--category` / `-c` | ✅ | Nombre de la categoría padre | — |
+| `--category` / `-c` | ✅* | Nombre de la categoría padre (*obligatorio en modo individual; opcional con `--sequential`) | — |
 | `--tag` / `-t` | ❌ | Tema o tag del artículo | — |
 | `--subcategory` / `-s` | ❌ | Nombre de la subcategoría | `General` |
 | `--output` / `-o` | ❌ | Ruta del fichero JSON de salida | `article.json` |
@@ -140,6 +140,7 @@ python3 generateArticle.py \
 | `--title` / `-T` | ❌ | Título del artículo (si se omite, se genera con IA) | — |
 | `--provider` / `-p` | ❌ | Proveedor de IA: `auto`, `openai`, `gemini` u `ollama` | valor de `AI_PROVIDER` |
 | `--avoid-titles` | ❌ | Títulos a evitar (separados por `;`). El script compara el nuevo título con esta lista y regenera si la similitud supera el umbral 0.86 | `""` |
+| `--sequential` / `-q` | ❌ | Ruta a un fichero JSON con un array de configuraciones. Genera cada artículo de forma **secuencial**. Ver [Modo secuencial](#modo-secuencial). | — |
 
 El script:
 1. Valida la configuración (clave de API disponible).
@@ -147,6 +148,59 @@ El script:
 3. Genera metadatos SEO: `metaTitle`, `metaDescription`, `canonicalUrl`, datos estructurados JSON-LD y Open Graph.
 4. Guarda el documento completo en el fichero JSON indicado por `--output`.
 5. Notifica el resultado por correo (si hay SMTP configurado).
+
+---
+
+### Modo secuencial
+
+Con `--sequential` / `-q` puedes generar **varios artículos en una sola ejecución** pasando un fichero JSON con un array de configuraciones. Cada artículo se genera **uno tras otro** (de forma secuencial).
+
+**Ejemplo de fichero `articles.json`:**
+
+```json
+[
+  {
+    "category": "Spring Boot",
+    "tag": "Lombok",
+    "subcategory": "Anotaciones",
+    "output": "lombok.json",
+    "language": "es"
+  },
+  {
+    "category": "Java",
+    "tag": "Streams",
+    "output": "streams.json"
+  },
+  {
+    "category": "Docker",
+    "subcategory": "Contenedores",
+    "title": "Cómo usar Docker Compose",
+    "output": "docker.json"
+  }
+]
+```
+
+**Ejecución:**
+
+```bash
+python generateArticle.py --sequential articles.json
+```
+
+**Campos aceptados por cada entrada:**
+
+| Campo | Descripción | Por defecto |
+|---|---|---|
+| `category` | Categoría padre (obligatorio si no se pasa `--category` como argumento CLI) | valor de `--category` |
+| `tag` | Tema o tag del artículo | valor de `--tag` |
+| `subcategory` | Subcategoría | `General` |
+| `output` | Fichero JSON de salida | `article_{n}.json` |
+| `username` | Username del autor | valor de `--username` |
+| `site` | URL base del sitio | valor de `--site` |
+| `language` | Código ISO 639-1 del idioma | valor de `--language` |
+| `title` | Título explícito (si se omite, se genera con IA) | — |
+| `avoid_titles` | Títulos a evitar: string separado por `;` o array JSON | — |
+
+> Los argumentos CLI actúan como **valores por defecto** para todos los campos que no se especifiquen en cada entrada del array.
 
 ### 5. Ejecutar los tests
 
