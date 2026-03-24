@@ -1,7 +1,5 @@
 package com.github.juanfernandez.article.service;
 
-import org.springframework.stereotype.Component;
-
 import java.text.Normalizer;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -13,7 +11,6 @@ import java.util.regex.Pattern;
  * slug generation, title similarity detection, HTML escaping, word counting and reading time
  * estimation.
  */
-@Component
 public class TextUtils {
 
     private static final int WORDS_PER_MINUTE = 230;
