@@ -26,6 +26,17 @@ mvn test
 
 ---
 
+## ¿Puedo usarlo sin integrarlo en ningún sitio?
+
+Este repositorio publica un **starter/librería**, no una aplicación ejecutable completa.
+
+- ✅ Sí puedes usarlo en un proyecto nuevo y mínimo de Spring Boot (aunque sea solo para probar).
+- ❌ No hay un modo `standalone` tipo CLI en este repositorio para ejecutarlo “tal cual” sin proyecto consumidor.
+
+Si quieres probarlo rápido, crea un proyecto Spring Boot vacío, añade la dependencia del starter y expón un endpoint como en el ejemplo de abajo.
+
+---
+
 ## Cómo usarlo en **otro proyecto Spring Boot**
 
 ### 1) Instalar el starter localmente (si aún no está publicado en tu repositorio Maven)
