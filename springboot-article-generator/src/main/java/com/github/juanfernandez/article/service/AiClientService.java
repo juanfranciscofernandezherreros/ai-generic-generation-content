@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
@@ -34,7 +33,6 @@ import java.util.regex.Pattern;
  * <p><strong>Google Gemini</strong> — uses the Google AI REST API
  * ({@code POST .../models/{model}:generateContent}).
  */
-@Component
 public class AiClientService {
 
     private static final Logger log = LoggerFactory.getLogger(AiClientService.class);

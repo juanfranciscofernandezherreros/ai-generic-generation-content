@@ -6,7 +6,6 @@ import com.github.juanfernandez.article.model.Article;
 import com.github.juanfernandez.article.model.ArticleRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,7 +32,6 @@ import java.util.Random;
  * ({@link ArticleGeneratorProperties#getMaxApiRetries()} retries,
  * {@link ArticleGeneratorProperties#getRetryBaseDelaySeconds()} seconds base delay).
  */
-@Service
 public class ArticleGeneratorService {
 
     private static final Logger log = LoggerFactory.getLogger(ArticleGeneratorService.class);

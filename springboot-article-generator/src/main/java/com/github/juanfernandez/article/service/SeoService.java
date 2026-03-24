@@ -1,7 +1,6 @@
 package com.github.juanfernandez.article.service;
 
 import com.github.juanfernandez.article.config.ArticleGeneratorProperties;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,7 +13,6 @@ import java.util.Map;
  *
  * <p>Mirrors the Python {@code seo.py} module.
  */
-@Component
 public class SeoService {
 
     private final ArticleGeneratorProperties properties;

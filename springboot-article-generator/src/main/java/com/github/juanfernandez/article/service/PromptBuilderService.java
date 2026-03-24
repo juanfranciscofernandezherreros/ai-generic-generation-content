@@ -1,7 +1,6 @@
 package com.github.juanfernandez.article.service;
 
 import com.github.juanfernandez.article.config.ArticleGeneratorProperties;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
@@ -12,7 +11,6 @@ import java.util.Map;
  * <p>Mirrors the Python {@code prompts.py} module. Prompts are written in the configured
  * language and include detailed SEO on-page instructions.
  */
-@Component
 public class PromptBuilderService {
 
     private static final String DEFAULT_GENERATION_SYSTEM_MSG =
