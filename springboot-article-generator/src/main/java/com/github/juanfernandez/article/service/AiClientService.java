@@ -20,14 +20,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Client for AI provider APIs — OpenAI, Google Gemini and Ollama — all routed through
+ * Client for AI provider APIs — OpenAI, Google Gemini, Ollama and Anthropic — all routed through
  * LangChain4j when a {@link ChatModel} bean is available.
  *
  * <p>This service is responsible for:
  * <ul>
  *   <li>Detecting the active AI provider based on {@link ArticleGeneratorProperties#getProvider()}.</li>
  *   <li>Delegating all calls to a LangChain4j {@link ChatModel} when one is present,
- *       regardless of whether the provider is OpenAI, Gemini or Ollama.</li>
+ *       regardless of whether the provider is OpenAI, Gemini, Ollama or Anthropic.</li>
  *   <li>Falling back to direct REST calls when no LangChain4j bean is configured.</li>
  *   <li>Extracting the text content from the AI response.</li>
  *   <li>Extracting JSON blocks from free-form AI responses.</li>
@@ -44,7 +44,12 @@ import java.util.regex.Pattern;
  * <p><strong>Ollama (LangChain4j)</strong> — configure
  * {@code langchain4j.ollama.chat-model.*} to get an {@code OllamaChatModel} bean.
  *
- * <p>All three provider-specific {@code ChatModel} implementations share the same
+ * <p><strong>Anthropic (LangChain4j)</strong> — configure
+ * {@code langchain4j.anthropic.chat-model.*} to get an {@code AnthropicChatModel} bean.
+ * Requires {@code langchain4j-anthropic-spring-boot-starter} on the classpath.
+ * No direct REST fallback is available for Anthropic.
+ *
+ * <p>All provider-specific {@code ChatModel} implementations share the same
  * {@link ChatModel} interface, so this service can call them uniformly through
  * {@link #callLangChain4j(String, String)}.  Direct REST fallbacks are retained for
  * backwards compatibility when no LangChain4j bean is on the classpath.
@@ -96,7 +101,7 @@ public class AiClientService {
     public boolean isGeminiProvider() {
         AiProvider p = properties.getProvider();
         if (p == AiProvider.GEMINI) return true;
-        if (p == AiProvider.OPENAI || p == AiProvider.OLLAMA) return false;
+        if (p == AiProvider.OPENAI || p == AiProvider.OLLAMA || p == AiProvider.ANTHROPIC) return false;
         return properties.getModel() != null && properties.getModel().toLowerCase().startsWith("gemini");
     }
 
@@ -106,9 +111,16 @@ public class AiClientService {
     public boolean isOllamaProvider() {
         AiProvider p = properties.getProvider();
         if (p == AiProvider.OLLAMA) return true;
-        if (p == AiProvider.OPENAI || p == AiProvider.GEMINI) return false;
+        if (p == AiProvider.OPENAI || p == AiProvider.GEMINI || p == AiProvider.ANTHROPIC) return false;
         String baseUrl = properties.getOllamaBaseUrl();
         return baseUrl != null && !baseUrl.isBlank();
+    }
+
+    /**
+     * Returns {@code true} when the active provider is Anthropic.
+     */
+    public boolean isAnthropicProvider() {
+        return properties.getProvider() == AiProvider.ANTHROPIC;
     }
 
     // ── Main generation method ────────────────────────────────────────────
@@ -117,11 +129,12 @@ public class AiClientService {
      * Sends {@code userPrompt} to the configured AI provider and returns the raw text response.
      *
      * <p>When a LangChain4j {@link ChatModel} bean is available it is used for <em>all</em>
-     * providers (OpenAI, Google Gemini, Ollama).  This means you can configure any of:
+     * providers (OpenAI, Google Gemini, Ollama, Anthropic).  This means you can configure any of:
      * <ul>
      *   <li>{@code langchain4j.open-ai.chat-model.*} — OpenAI via LangChain4j</li>
      *   <li>{@code langchain4j.google-ai-gemini.chat-model.*} — Gemini via LangChain4j</li>
      *   <li>{@code langchain4j.ollama.chat-model.*} — Ollama via LangChain4j</li>
+     *   <li>{@code langchain4j.anthropic.chat-model.*} — Anthropic Claude via LangChain4j</li>
      * </ul>
      * and the same {@link #callLangChain4j(String, String)} path will be used.
      *
@@ -141,6 +154,12 @@ public class AiClientService {
             return callLangChain4j(systemMsg, userPrompt);
         }
         // ── Fallback: direct REST calls ──────────────────────────────────
+        if (isAnthropicProvider()) {
+            throw new RuntimeException(
+                    "Anthropic provider requires LangChain4j. "
+                    + "Add langchain4j-anthropic-spring-boot-starter and configure "
+                    + "langchain4j.anthropic.chat-model.api-key in application.yml.");
+        }
         if (isGeminiProvider()) {
             return callGemini(systemMsg, userPrompt, maxTokens, temperature);
         } else if (isOllamaProvider()) {
@@ -162,7 +181,8 @@ public class AiClientService {
      * Calls the configured AI model through the LangChain4j {@link ChatModel} abstraction.
      *
      * <p>Works transparently with any LangChain4j-supported provider:
-     * {@code OpenAiChatModel}, {@code GoogleAiGeminiChatModel} or {@code OllamaChatModel}.
+     * {@code OpenAiChatModel}, {@code GoogleAiGeminiChatModel}, {@code OllamaChatModel}
+     * or {@code AnthropicChatModel}.
      * Model, API key, temperature, timeout and logging are managed by the corresponding
      * LangChain4j Spring Boot auto-configuration in {@code application.yml}.
      *

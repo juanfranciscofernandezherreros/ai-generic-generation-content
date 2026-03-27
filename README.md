@@ -1,7 +1,7 @@
 # Spring Boot Article Generator
 
 Starter de Spring Boot para generar artículos técnicos con IA y metadatos SEO completos.  
-Integración nativa con **LangChain4j** para **OpenAI**, **Google Gemini** y **Ollama** (local).
+Integración nativa con **LangChain4j** para **OpenAI**, **Google Gemini**, **Ollama** (local) y **Anthropic Claude**.
 
 ---
 
@@ -29,14 +29,16 @@ Integración nativa con **LangChain4j** para **OpenAI**, **Google Gemini** y **O
 
 - `springboot-article-generator/` — librería `article-generator-spring-boot-starter` con autoconfiguración Spring Boot.
 - Servicio principal listo para inyectar: `ArticleGeneratorService`.
-- Integración **LangChain4j 1.0.0-beta5** como método preferido para los tres proveedores:
+- Integración **LangChain4j 1.0.0-beta5** como método preferido para los cuatro proveedores:
   - `langchain4j-open-ai-spring-boot-starter` — OpenAI (GPT)
   - `langchain4j-google-ai-gemini-spring-boot-starter` — Google Gemini
   - `langchain4j-ollama-spring-boot-starter` — Ollama (local)
-- Soporte de proveedores IA (todos disponibles también por REST directo como fallback):
+  - `langchain4j-anthropic-spring-boot-starter` — Anthropic Claude
+- Soporte de proveedores IA (todos disponibles también por REST directo como fallback excepto Anthropic):
   - **OpenAI** (GPT) — vía LangChain4j `ChatModel` (recomendado) o REST directo
   - **Google Gemini** — vía LangChain4j `ChatModel` (recomendado) o REST directo
   - **Ollama** (local) — vía LangChain4j `ChatModel` (recomendado) o REST directo
+  - **Anthropic Claude** — vía LangChain4j `ChatModel` (requiere `langchain4j-anthropic-spring-boot-starter`)
 - Generación de artículos con HTML semántico, metadatos SEO completos, Schema.org JSON-LD y Open Graph.
 - Algoritmo de deduplicación de títulos en dos fases.
 - Reintentos automáticos con _exponential back-off_ para errores transitorios de red.
@@ -49,7 +51,7 @@ Integración nativa con **LangChain4j** para **OpenAI**, **Google Gemini** y **O
 ArticleGeneratorService          ← orquesta el pipeline completo
   ├─ PromptBuilderService        ← construye los prompts para la IA en el idioma indicado
   ├─ AiClientService             ← cliente HTTP para los proveedores IA
-  │    ├─ LangChain4j ChatModel  ← OpenAI, Google Gemini u Ollama (recomendado, opcional)
+  │    ├─ LangChain4j ChatModel  ← OpenAI, Google Gemini, Ollama o Anthropic (recomendado, opcional)
   │    ├─ OpenAI REST directo    ← fallback sin LangChain4j
   │    ├─ Google Gemini REST     ← fallback sin LangChain4j
   │    └─ Ollama REST            ← fallback sin LangChain4j (endpoint OpenAI-compatible)
@@ -67,7 +69,7 @@ ArticleGeneratorService          ← orquesta el pipeline completo
 | `ArticleGeneratorProperties` | Propiedades `@ConfigurationProperties(prefix = "article-generator")` |
 | `Article` | DTO de salida con contenido + metadatos SEO + Open Graph + estadísticas |
 | `ArticleRequest` | DTO de entrada para la generación |
-| `AiProvider` | Enum: `AUTO`, `OPENAI`, `GEMINI`, `OLLAMA` |
+| `AiProvider` | Enum: `AUTO`, `OPENAI`, `GEMINI`, `OLLAMA`, `ANTHROPIC` |
 
 La autoconfiguración registra todos los beans con `@ConditionalOnMissingBean`, por lo que cualquier bean puede ser sobreescrito por el proyecto consumidor.
 
@@ -139,6 +141,13 @@ En el `pom.xml` del **otro proyecto**:
 >     <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
 >     <version>1.0.0-beta5</version>
 > </dependency>
+>
+> <!-- Anthropic Claude -->
+> <dependency>
+>     <groupId>dev.langchain4j</groupId>
+>     <artifactId>langchain4j-anthropic-spring-boot-starter</artifactId>
+>     <version>1.0.0-beta5</version>
+> </dependency>
 > ```
 
 ### 3) Configurar propiedades
@@ -205,7 +214,30 @@ article-generator:
   language: es
 ```
 
-#### Opción D — OpenAI REST directo (sin LangChain4j)
+#### Opción D — Anthropic Claude vía **LangChain4j** ✅ Recomendado
+
+```yaml
+langchain4j:
+  anthropic:
+    chat-model:
+      api-key: ${ANTHROPIC_API_KEY}
+      model-name: claude-sonnet-4-5    # cualquier modelo Claude
+      temperature: 0.7
+      timeout: PT60S
+      log-requests: true
+      log-responses: true
+
+article-generator:
+  provider: anthropic
+  site: https://mi-blog.com
+  author-username: adminUser
+  language: es
+```
+
+> Requiere `langchain4j-anthropic-spring-boot-starter` en el classpath del proyecto consumidor.
+> Anthropic no dispone de fallback REST directo; el bean `ChatModel` de LangChain4j es obligatorio.
+
+#### Opción E — OpenAI REST directo (sin LangChain4j)
 
 ```yaml
 article-generator:
@@ -217,7 +249,7 @@ article-generator:
   language: es
 ```
 
-#### Opción E — Google Gemini REST directo (sin LangChain4j)
+#### Opción F — Google Gemini REST directo (sin LangChain4j)
 
 ```yaml
 article-generator:
@@ -229,7 +261,7 @@ article-generator:
   language: es
 ```
 
-#### Opción F — Ollama REST directo (sin LangChain4j)
+#### Opción G — Ollama REST directo (sin LangChain4j)
 
 ```yaml
 article-generator:
@@ -314,7 +346,7 @@ Todas las propiedades tienen el prefijo `article-generator`.
 
 | Propiedad | Tipo | Defecto | Descripción |
 |-----------|------|---------|-------------|
-| `provider` | `AUTO` \| `OPENAI` \| `GEMINI` \| `OLLAMA` | `AUTO` | Proveedor IA activo |
+| `provider` | `AUTO` \| `OPENAI` \| `GEMINI` \| `OLLAMA` \| `ANTHROPIC` | `AUTO` | Proveedor IA activo |
 | `model` | `String` | `gpt-4o` | Nombre del modelo |
 | `openai-api-key` | `String` | — | Clave API de OpenAI |
 | `gemini-api-key` | `String` | — | Clave API de Google Gemini |

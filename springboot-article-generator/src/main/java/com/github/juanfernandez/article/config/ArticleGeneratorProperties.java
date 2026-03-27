@@ -39,9 +39,11 @@ public class ArticleGeneratorProperties {
      * <ul>
      *   <li>{@code AUTO} (default) — auto-detect: Gemini if model starts with {@code gemini-},
      *       Ollama if {@code ollama-base-url} is set, otherwise OpenAI.</li>
-     *   <li>{@code OPENAI}  — force OpenAI GPT models.</li>
-     *   <li>{@code GEMINI}  — force Google Gemini.</li>
-     *   <li>{@code OLLAMA}  — force Ollama local server.</li>
+     *   <li>{@code OPENAI}     — force OpenAI GPT models.</li>
+     *   <li>{@code GEMINI}     — force Google Gemini.</li>
+     *   <li>{@code OLLAMA}     — force Ollama local server.</li>
+     *   <li>{@code ANTHROPIC}  — force Anthropic Claude (requires LangChain4j
+     *       {@code langchain4j-anthropic-spring-boot-starter}).</li>
      * </ul>
      */
     private AiProvider provider = AiProvider.AUTO;

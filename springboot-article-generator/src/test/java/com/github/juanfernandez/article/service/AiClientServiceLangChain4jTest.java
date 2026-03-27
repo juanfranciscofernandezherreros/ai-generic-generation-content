@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for {@link AiClientService} verifying that LangChain4j {@link ChatModel}
- * is used for all three AI providers (OpenAI, Gemini, Ollama) when a bean is available.
+ * is used for all four AI providers (OpenAI, Gemini, Ollama, Anthropic) when a bean is available.
  */
 class AiClientServiceLangChain4jTest {
 
@@ -81,6 +81,34 @@ class AiClientServiceLangChain4jTest {
 
         assertEquals("Ollama article content", result);
         verify(mockModel, times(1)).chat(any(ChatMessage.class), any(ChatMessage.class));
+    }
+
+    // ── Anthropic ─────────────────────────────────────────────────────────
+
+    @Test
+    void generate_usesLangChain4jForAnthropic() {
+        properties.setProvider(AiProvider.ANTHROPIC);
+        when(mockModel.chat(any(ChatMessage.class), any(ChatMessage.class)))
+                .thenReturn(mockResponse("Anthropic Claude article content"));
+
+        String result = service.generate("system msg", "user prompt", 500, 0.0);
+
+        assertEquals("Anthropic Claude article content", result);
+        verify(mockModel, times(1)).chat(any(ChatMessage.class), any(ChatMessage.class));
+    }
+
+    @Test
+    void generate_throwsDescriptiveErrorForAnthropicWithoutLangChain4j() {
+        // Without LangChain4j bean, ANTHROPIC provider should throw a helpful error
+        AiClientService noLc4jService = new AiClientService(properties, new ObjectMapper());
+        properties.setProvider(AiProvider.ANTHROPIC);
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> noLc4jService.generate("sys", "user", 10, 0.0));
+        assertTrue(ex.getMessage().contains("Anthropic"),
+                "Expected 'Anthropic' in error message, got: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("langchain4j-anthropic-spring-boot-starter"),
+                "Expected starter name in error message, got: " + ex.getMessage());
     }
 
     // ── Empty response ────────────────────────────────────────────────────

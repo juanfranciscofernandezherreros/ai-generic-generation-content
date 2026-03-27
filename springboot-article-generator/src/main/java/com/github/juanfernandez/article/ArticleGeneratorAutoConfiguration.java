@@ -56,6 +56,17 @@ import org.springframework.context.annotation.Bean;
  *       temperature: 0.0
  *       timeout: PT120S
  *
+ * # For Anthropic Claude via LangChain4j (recommended)
+ * langchain4j:
+ *   anthropic:
+ *     chat-model:
+ *       api-key: ${ANTHROPIC_API_KEY}
+ *       model-name: claude-sonnet-4-5
+ *       temperature: 0.0
+ *       timeout: PT60S
+ *       log-requests: true
+ *       log-responses: true
+ *
  * # Fallback: OpenAI direct REST (no LangChain4j)
  * article-generator.openai-api-key=${OPENAIAPIKEY}
  *
