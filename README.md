@@ -53,6 +53,33 @@ En el `pom.xml` del **otro proyecto**:
 
 ### 3) Configurar propiedades
 
+#### Opción A — OpenAI vía **LangChain4j** (recomendado)
+
+Añade en `application.yml`:
+
+```yaml
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${OPENAIAPIKEY}
+      model-name: gpt-3.5-turbo
+      temperature: 0.0
+      timeout: PT60S
+      log-requests: true
+      log-responses: true
+
+article-generator:
+  site: https://mi-blog.com
+  author-username: adminUser
+  language: es
+```
+
+> Con esta configuración el starter detecta automáticamente el bean `ChatModel` creado por LangChain4j
+> y lo utiliza para todas las llamadas a OpenAI.  No es necesario definir `article-generator.provider`
+> ni `article-generator.openai-api-key`.
+
+#### Opción B — OpenAI (REST directo, sin LangChain4j)
+
 En `application.yml` (recomendado):
 
 ```yaml

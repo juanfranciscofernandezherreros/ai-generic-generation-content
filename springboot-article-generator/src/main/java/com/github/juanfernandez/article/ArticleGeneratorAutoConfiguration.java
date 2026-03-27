@@ -7,6 +7,8 @@ import com.github.juanfernandez.article.service.ArticleGeneratorService;
 import com.github.juanfernandez.article.service.PromptBuilderService;
 import com.github.juanfernandez.article.service.SeoService;
 import com.github.juanfernandez.article.service.TextUtils;
+import dev.langchain4j.model.chat.ChatModel;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -24,7 +26,18 @@ import org.springframework.context.annotation.Bean;
  *
  * <h2>Minimal required configuration</h2>
  * <pre>
- * # For OpenAI (default)
+ * # For OpenAI via LangChain4j (recommended)
+ * langchain4j:
+ *   open-ai:
+ *     chat-model:
+ *       api-key: ${OPENAIAPIKEY}
+ *       model-name: gpt-3.5-turbo
+ *       temperature: 0.0
+ *       timeout: PT60S
+ *       log-requests: true
+ *       log-responses: true
+ *
+ * # For OpenAI (legacy direct REST)
  * article-generator.openai-api-key=${OPENAIAPIKEY}
  *
  * # For Gemini
@@ -69,8 +82,10 @@ public class ArticleGeneratorAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public AiClientService aiClientService(ArticleGeneratorProperties properties,
-                                           ObjectMapper objectMapper) {
-        return new AiClientService(properties, objectMapper);
+                                           ObjectMapper objectMapper,
+                                           ObjectProvider<ChatModel> chatModelProvider) {
+        ChatModel chatModel = chatModelProvider.getIfAvailable();
+        return new AiClientService(properties, objectMapper, chatModel);
     }
 
     @Bean

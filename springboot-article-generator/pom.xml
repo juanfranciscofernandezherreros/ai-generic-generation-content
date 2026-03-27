@@ -37,6 +37,7 @@
         <java.version>17</java.version>
         <!-- Prevent the Spring Boot maven plugin from creating an executable fat-jar -->
         <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+        <langchain4j.version>1.0.0-beta5</langchain4j.version>
     </properties>
 
     <dependencies>
@@ -44,6 +45,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+
+        <!-- ── LangChain4j OpenAI (optional — enables langchain4j.open-ai.chat-model.* config) ── -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+            <version>${langchain4j.version}</version>
+            <optional>true</optional>
         </dependency>
 
         <!-- SLF4J API for logging (implementation provided by the consuming app) -->

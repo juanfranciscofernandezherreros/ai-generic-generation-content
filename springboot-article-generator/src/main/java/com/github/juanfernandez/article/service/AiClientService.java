@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.juanfernandez.article.config.ArticleGeneratorProperties;
 import com.github.juanfernandez.article.model.AiProvider;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -16,22 +20,26 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * HTTP client for AI provider APIs (OpenAI, Google Gemini, Ollama).
+ * HTTP client for AI provider APIs (OpenAI via LangChain4j, Google Gemini, Ollama).
  *
  * <p>This service is responsible for:
  * <ul>
  *   <li>Detecting the active AI provider based on {@link ArticleGeneratorProperties#getProvider()}.</li>
- *   <li>Making HTTP POST requests to the appropriate API endpoint.</li>
+ *   <li>Delegating OpenAI calls to a LangChain4j {@link ChatModel} when one is available,
+ *       or falling back to direct REST calls otherwise.</li>
+ *   <li>Making HTTP POST requests to Gemini / Ollama endpoints.</li>
  *   <li>Extracting the text content from the AI response.</li>
  *   <li>Extracting JSON blocks from free-form AI responses.</li>
  * </ul>
  *
- * <p><strong>OpenAI / Ollama</strong> — uses the standard OpenAI Chat Completions API
- * ({@code POST /v1/chat/completions}).  Ollama exposes an OpenAI-compatible endpoint so the same
- * request format is used for both.
+ * <p><strong>OpenAI (LangChain4j)</strong> — when a {@link ChatModel} bean is present
+ * (auto-configured via {@code langchain4j.open-ai.chat-model.*} in {@code application.yml}),
+ * it is used for all OpenAI calls.  The legacy REST-client path is kept as a fallback.
  *
  * <p><strong>Google Gemini</strong> — uses the Google AI REST API
  * ({@code POST .../models/{model}:generateContent}).
+ *
+ * <p><strong>Ollama</strong> — uses the OpenAI-compatible REST endpoint exposed by Ollama.
  */
 public class AiClientService {
 
@@ -43,9 +51,33 @@ public class AiClientService {
     private final ArticleGeneratorProperties properties;
     private final ObjectMapper objectMapper;
 
-    public AiClientService(ArticleGeneratorProperties properties, ObjectMapper objectMapper) {
+    /** Optional LangChain4j chat model — present when langchain4j.open-ai.chat-model is configured. */
+    private final ChatModel chatModel;
+
+    /**
+     * Constructor used when a LangChain4j {@link ChatModel} is available.
+     *
+     * @param properties article-generator configuration properties
+     * @param objectMapper Jackson mapper for JSON (de)serialisation
+     * @param chatModel  LangChain4j chat model (may be {@code null} for Gemini/Ollama-only setups)
+     */
+    public AiClientService(ArticleGeneratorProperties properties,
+                           ObjectMapper objectMapper,
+                           ChatModel chatModel) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.chatModel = chatModel;
+    }
+
+    /**
+     * Backwards-compatible constructor without a LangChain4j model.
+     * Falls back to the direct REST client for OpenAI calls.
+     *
+     * @param properties   article-generator configuration properties
+     * @param objectMapper Jackson mapper for JSON (de)serialisation
+     */
+    public AiClientService(ArticleGeneratorProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper, null);
     }
 
     // ── Provider detection ────────────────────────────────────────────────
@@ -76,6 +108,9 @@ public class AiClientService {
     /**
      * Sends {@code userPrompt} to the configured AI provider and returns the raw text response.
      *
+     * <p>For OpenAI: delegates to the LangChain4j {@link ChatModel} when one is configured
+     * via {@code langchain4j.open-ai.chat-model.*}; otherwise falls back to a direct REST call.
+     *
      * @param systemMsg   system / instruction message for the AI
      * @param userPrompt  user prompt text
      * @param maxTokens   maximum output tokens
@@ -92,10 +127,46 @@ public class AiClientService {
                     "ollama",          // placeholder key
                     systemMsg, userPrompt, maxTokens, temperature);
         } else {
+            // OpenAI — prefer LangChain4j when available
+            if (chatModel != null) {
+                return callLangChain4j(systemMsg, userPrompt);
+            }
             return callOpenAiCompatible(
                     OPENAI_BASE_URL,
                     properties.getOpenaiApiKey(),
                     systemMsg, userPrompt, maxTokens, temperature);
+        }
+    }
+
+    // ── LangChain4j ───────────────────────────────────────────────────────
+
+    /**
+     * Calls the OpenAI model through the LangChain4j {@link ChatModel} abstraction.
+     *
+     * <p>The model, API key, temperature, timeout and logging settings are all managed by the
+     * LangChain4j Spring Boot auto-configuration via {@code langchain4j.open-ai.chat-model.*}
+     * in {@code application.yml}.  This method simply forwards the system and user messages.
+     *
+     * @param systemMsg  system / instruction message
+     * @param userPrompt user prompt text
+     * @return text response from the model
+     * @throws RuntimeException if the LangChain4j call fails or returns an empty response
+     */
+    private String callLangChain4j(String systemMsg, String userPrompt) {
+        log.debug("Calling OpenAI via LangChain4j ChatModel");
+        try {
+            ChatResponse response = chatModel.chat(
+                    SystemMessage.from(systemMsg),
+                    UserMessage.from(userPrompt));
+            String content = response.aiMessage().text();
+            if (content == null || content.isBlank()) {
+                throw new RuntimeException("LangChain4j returned an empty response.");
+            }
+            return content;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("LangChain4j call failed: " + e.getMessage(), e);
         }
     }
 
