@@ -55,6 +55,22 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- ── LangChain4j Google Gemini (optional — enables langchain4j.google-ai-gemini.chat-model.* config) ── -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-google-ai-gemini-spring-boot-starter</artifactId>
+            <version>${langchain4j.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ── LangChain4j Ollama (optional — enables langchain4j.ollama.chat-model.* config) ── -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
+            <version>${langchain4j.version}</version>
+            <optional>true</optional>
+        </dependency>
+
         <!-- SLF4J API for logging (implementation provided by the consuming app) -->
         <dependency>
             <groupId>org.slf4j</groupId>

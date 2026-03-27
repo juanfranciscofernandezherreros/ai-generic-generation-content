@@ -31,21 +31,40 @@ import org.springframework.context.annotation.Bean;
  *   open-ai:
  *     chat-model:
  *       api-key: ${OPENAIAPIKEY}
- *       model-name: gpt-3.5-turbo
+ *       model-name: gpt-4o
  *       temperature: 0.0
  *       timeout: PT60S
  *       log-requests: true
  *       log-responses: true
  *
- * # For OpenAI (legacy direct REST)
+ * # For Google Gemini via LangChain4j (recommended)
+ * langchain4j:
+ *   google-ai-gemini:
+ *     chat-model:
+ *       api-key: ${GEMINI_API_KEY}
+ *       model-name: gemini-2.0-flash
+ *       temperature: 0.0
+ *       log-requests: true
+ *       log-responses: true
+ *
+ * # For Ollama via LangChain4j (recommended)
+ * langchain4j:
+ *   ollama:
+ *     chat-model:
+ *       base-url: http://localhost:11434
+ *       model-name: llama3
+ *       temperature: 0.0
+ *       timeout: PT120S
+ *
+ * # Fallback: OpenAI direct REST (no LangChain4j)
  * article-generator.openai-api-key=${OPENAIAPIKEY}
  *
- * # For Gemini
+ * # Fallback: Gemini direct REST (no LangChain4j)
  * article-generator.provider=gemini
  * article-generator.model=gemini-2.0-flash
  * article-generator.gemini-api-key=${GEMINI_API_KEY}
  *
- * # For Ollama
+ * # Fallback: Ollama direct REST (no LangChain4j)
  * article-generator.provider=ollama
  * article-generator.model=llama3
  * article-generator.ollama-base-url=http://localhost:11434

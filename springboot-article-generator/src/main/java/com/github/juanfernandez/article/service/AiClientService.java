@@ -20,26 +20,34 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * HTTP client for AI provider APIs (OpenAI via LangChain4j, Google Gemini, Ollama).
+ * Client for AI provider APIs — OpenAI, Google Gemini and Ollama — all routed through
+ * LangChain4j when a {@link ChatModel} bean is available.
  *
  * <p>This service is responsible for:
  * <ul>
  *   <li>Detecting the active AI provider based on {@link ArticleGeneratorProperties#getProvider()}.</li>
- *   <li>Delegating OpenAI calls to a LangChain4j {@link ChatModel} when one is available,
- *       or falling back to direct REST calls otherwise.</li>
- *   <li>Making HTTP POST requests to Gemini / Ollama endpoints.</li>
+ *   <li>Delegating all calls to a LangChain4j {@link ChatModel} when one is present,
+ *       regardless of whether the provider is OpenAI, Gemini or Ollama.</li>
+ *   <li>Falling back to direct REST calls when no LangChain4j bean is configured.</li>
  *   <li>Extracting the text content from the AI response.</li>
  *   <li>Extracting JSON blocks from free-form AI responses.</li>
  * </ul>
  *
- * <p><strong>OpenAI (LangChain4j)</strong> — when a {@link ChatModel} bean is present
- * (auto-configured via {@code langchain4j.open-ai.chat-model.*} in {@code application.yml}),
- * it is used for all OpenAI calls.  The legacy REST-client path is kept as a fallback.
+ * <p><strong>OpenAI (LangChain4j)</strong> — configure
+ * {@code langchain4j.open-ai.chat-model.*} in {@code application.yml} to get a
+ * LangChain4j-managed {@code OpenAiChatModel} bean.
  *
- * <p><strong>Google Gemini</strong> — uses the Google AI REST API
- * ({@code POST .../models/{model}:generateContent}).
+ * <p><strong>Google Gemini (LangChain4j)</strong> — configure
+ * {@code langchain4j.google-ai-gemini.chat-model.*} to get a
+ * {@code GoogleAiGeminiChatModel} bean.
  *
- * <p><strong>Ollama</strong> — uses the OpenAI-compatible REST endpoint exposed by Ollama.
+ * <p><strong>Ollama (LangChain4j)</strong> — configure
+ * {@code langchain4j.ollama.chat-model.*} to get an {@code OllamaChatModel} bean.
+ *
+ * <p>All three provider-specific {@code ChatModel} implementations share the same
+ * {@link ChatModel} interface, so this service can call them uniformly through
+ * {@link #callLangChain4j(String, String)}.  Direct REST fallbacks are retained for
+ * backwards compatibility when no LangChain4j bean is on the classpath.
  */
 public class AiClientService {
 
@@ -108,17 +116,31 @@ public class AiClientService {
     /**
      * Sends {@code userPrompt} to the configured AI provider and returns the raw text response.
      *
-     * <p>For OpenAI: delegates to the LangChain4j {@link ChatModel} when one is configured
-     * via {@code langchain4j.open-ai.chat-model.*}; otherwise falls back to a direct REST call.
+     * <p>When a LangChain4j {@link ChatModel} bean is available it is used for <em>all</em>
+     * providers (OpenAI, Google Gemini, Ollama).  This means you can configure any of:
+     * <ul>
+     *   <li>{@code langchain4j.open-ai.chat-model.*} — OpenAI via LangChain4j</li>
+     *   <li>{@code langchain4j.google-ai-gemini.chat-model.*} — Gemini via LangChain4j</li>
+     *   <li>{@code langchain4j.ollama.chat-model.*} — Ollama via LangChain4j</li>
+     * </ul>
+     * and the same {@link #callLangChain4j(String, String)} path will be used.
+     *
+     * <p>When no {@link ChatModel} bean is configured the service falls back to direct REST
+     * calls for each provider (legacy behaviour).
      *
      * @param systemMsg   system / instruction message for the AI
      * @param userPrompt  user prompt text
-     * @param maxTokens   maximum output tokens
-     * @param temperature generation temperature (0.0 – 1.0)
+     * @param maxTokens   maximum output tokens (used only on the direct-REST fallback path)
+     * @param temperature generation temperature 0.0–1.0 (used only on the direct-REST fallback path)
      * @return raw text returned by the AI
      * @throws RuntimeException if the API call fails or returns no content
      */
     public String generate(String systemMsg, String userPrompt, int maxTokens, double temperature) {
+        // LangChain4j is available — use it regardless of provider (OpenAI, Gemini or Ollama)
+        if (chatModel != null) {
+            return callLangChain4j(systemMsg, userPrompt);
+        }
+        // ── Fallback: direct REST calls ──────────────────────────────────
         if (isGeminiProvider()) {
             return callGemini(systemMsg, userPrompt, maxTokens, temperature);
         } else if (isOllamaProvider()) {
@@ -127,10 +149,6 @@ public class AiClientService {
                     "ollama",          // placeholder key
                     systemMsg, userPrompt, maxTokens, temperature);
         } else {
-            // OpenAI — prefer LangChain4j when available
-            if (chatModel != null) {
-                return callLangChain4j(systemMsg, userPrompt);
-            }
             return callOpenAiCompatible(
                     OPENAI_BASE_URL,
                     properties.getOpenaiApiKey(),
@@ -141,11 +159,12 @@ public class AiClientService {
     // ── LangChain4j ───────────────────────────────────────────────────────
 
     /**
-     * Calls the OpenAI model through the LangChain4j {@link ChatModel} abstraction.
+     * Calls the configured AI model through the LangChain4j {@link ChatModel} abstraction.
      *
-     * <p>The model, API key, temperature, timeout and logging settings are all managed by the
-     * LangChain4j Spring Boot auto-configuration via {@code langchain4j.open-ai.chat-model.*}
-     * in {@code application.yml}.  This method simply forwards the system and user messages.
+     * <p>Works transparently with any LangChain4j-supported provider:
+     * {@code OpenAiChatModel}, {@code GoogleAiGeminiChatModel} or {@code OllamaChatModel}.
+     * Model, API key, temperature, timeout and logging are managed by the corresponding
+     * LangChain4j Spring Boot auto-configuration in {@code application.yml}.
      *
      * @param systemMsg  system / instruction message
      * @param userPrompt user prompt text
@@ -153,7 +172,7 @@ public class AiClientService {
      * @throws RuntimeException if the LangChain4j call fails or returns an empty response
      */
     private String callLangChain4j(String systemMsg, String userPrompt) {
-        log.debug("Calling OpenAI via LangChain4j ChatModel");
+        log.debug("Calling AI provider via LangChain4j ChatModel");
         try {
             ChatResponse response = chatModel.chat(
                     SystemMessage.from(systemMsg),

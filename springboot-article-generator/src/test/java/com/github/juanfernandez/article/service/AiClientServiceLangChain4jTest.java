@@ -2,6 +2,7 @@ package com.github.juanfernandez.article.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.juanfernandez.article.config.ArticleGeneratorProperties;
+import com.github.juanfernandez.article.model.AiProvider;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.ChatModel;
@@ -14,7 +15,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for {@link AiClientService} using a mocked LangChain4j {@link ChatModel}.
+ * Unit tests for {@link AiClientService} verifying that LangChain4j {@link ChatModel}
+ * is used for all three AI providers (OpenAI, Gemini, Ollama) when a bean is available.
  */
 class AiClientServiceLangChain4jTest {
 
@@ -29,28 +31,64 @@ class AiClientServiceLangChain4jTest {
         service = new AiClientService(properties, new ObjectMapper(), mockModel);
     }
 
+    // ── Helper ────────────────────────────────────────────────────────────
+
+    private ChatResponse mockResponse(String content) {
+        return ChatResponse.builder()
+                .aiMessage(AiMessage.from(content))
+                .build();
+    }
+
+    // ── OpenAI ────────────────────────────────────────────────────────────
+
     @Test
     void generate_usesLangChain4jForOpenAi() {
-        String expectedContent = "Generated article content";
-        ChatResponse mockResponse = ChatResponse.builder()
-                .aiMessage(AiMessage.from(expectedContent))
-                .build();
+        properties.setProvider(AiProvider.OPENAI);
         when(mockModel.chat(any(ChatMessage.class), any(ChatMessage.class)))
-                .thenReturn(mockResponse);
+                .thenReturn(mockResponse("Generated article content"));
 
         String result = service.generate("system msg", "user prompt", 500, 0.0);
 
-        assertEquals(expectedContent, result);
+        assertEquals("Generated article content", result);
         verify(mockModel, times(1)).chat(any(ChatMessage.class), any(ChatMessage.class));
     }
 
+    // ── Google Gemini ─────────────────────────────────────────────────────
+
+    @Test
+    void generate_usesLangChain4jForGemini() {
+        properties.setProvider(AiProvider.GEMINI);
+        properties.setGeminiApiKey("dummy-key");
+        when(mockModel.chat(any(ChatMessage.class), any(ChatMessage.class)))
+                .thenReturn(mockResponse("Gemini article content"));
+
+        String result = service.generate("system msg", "user prompt", 500, 0.0);
+
+        assertEquals("Gemini article content", result);
+        verify(mockModel, times(1)).chat(any(ChatMessage.class), any(ChatMessage.class));
+    }
+
+    // ── Ollama ────────────────────────────────────────────────────────────
+
+    @Test
+    void generate_usesLangChain4jForOllama() {
+        properties.setProvider(AiProvider.OLLAMA);
+        properties.setOllamaBaseUrl("http://localhost:11434");
+        when(mockModel.chat(any(ChatMessage.class), any(ChatMessage.class)))
+                .thenReturn(mockResponse("Ollama article content"));
+
+        String result = service.generate("system msg", "user prompt", 500, 0.0);
+
+        assertEquals("Ollama article content", result);
+        verify(mockModel, times(1)).chat(any(ChatMessage.class), any(ChatMessage.class));
+    }
+
+    // ── Empty response ────────────────────────────────────────────────────
+
     @Test
     void generate_throwsWhenLangChain4jReturnsEmpty() {
-        ChatResponse mockResponse = ChatResponse.builder()
-                .aiMessage(AiMessage.from(""))
-                .build();
         when(mockModel.chat(any(ChatMessage.class), any(ChatMessage.class)))
-                .thenReturn(mockResponse);
+                .thenReturn(mockResponse(""));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> service.generate("system msg", "user prompt", 500, 0.0));
@@ -58,28 +96,17 @@ class AiClientServiceLangChain4jTest {
                 "Expected 'empty response' in message, got: " + ex.getMessage());
     }
 
+    // ── Fallback (no LangChain4j bean) ────────────────────────────────────
+
     @Test
     void generate_withoutLangChain4jFallsBackToRestPathForOpenAi() {
         // Without LangChain4j, service is created with the two-arg constructor (chatModel == null)
         AiClientService noLc4jService = new AiClientService(properties, new ObjectMapper());
 
-        // The service should take the REST path (chatModel is null), which means it will attempt
-        // a real HTTP call with a null/blank API key.  The REST client wraps failures in RuntimeException,
-        // so we just verify that a RuntimeException is thrown (no NPE from a null chatModel).
+        // The service should take the REST fallback path, which will fail attempting a real
+        // HTTP call with a null/blank API key. A RuntimeException (not NPE) is expected.
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> noLc4jService.generate("sys", "user", 10, 0.0));
         assertNotNull(ex.getMessage(), "Expected a descriptive RuntimeException from the REST path");
-    }
-
-    @Test
-    void generate_geminiProviderDoesNotUseLangChain4j() {
-        properties.setProvider(com.github.juanfernandez.article.model.AiProvider.GEMINI);
-        properties.setGeminiApiKey("dummy-key");
-
-        // Gemini path will call REST which will fail with a connection error — that's fine.
-        // The important thing is that the LangChain4j mock is never invoked.
-        assertThrows(RuntimeException.class,
-                () -> service.generate("sys", "user", 10, 0.0));
-        verify(mockModel, never()).chat(any(ChatMessage.class), any(ChatMessage.class));
     }
 }
