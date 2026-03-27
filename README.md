@@ -1,7 +1,7 @@
 # Spring Boot Article Generator
 
 Starter de Spring Boot para generar artículos técnicos con IA y metadatos SEO completos.  
-Integración nativa con **LangChain4j** (OpenAI), además de soporte para **Google Gemini** y **Ollama** (local).
+Integración nativa con **LangChain4j** para **OpenAI**, **Google Gemini** y **Ollama** (local).
 
 ---
 
@@ -19,6 +19,7 @@ Integración nativa con **LangChain4j** (OpenAI), además de soporte para **Goog
 - [Referencia de propiedades](#referencia-de-propiedades)
 - [Algoritmo de deduplicación de títulos](#algoritmo-de-deduplicación-de-títulos)
 - [Ejemplo end-to-end](#ejemplo-de-uso-end-to-end)
+- [Modelo de entrada](#modelo-de-entrada-articlerequest)
 - [Modelo de respuesta](#modelo-de-respuesta-article)
 - [Notas rápidas](#notas-rápidas)
 
@@ -28,11 +29,14 @@ Integración nativa con **LangChain4j** (OpenAI), además de soporte para **Goog
 
 - `springboot-article-generator/` — librería `article-generator-spring-boot-starter` con autoconfiguración Spring Boot.
 - Servicio principal listo para inyectar: `ArticleGeneratorService`.
-- Integración **LangChain4j** (`langchain4j-open-ai-spring-boot-starter:1.0.0-beta5`) como método preferido para OpenAI.
-- Soporte de proveedores IA:
+- Integración **LangChain4j 1.0.0-beta5** como método preferido para los tres proveedores:
+  - `langchain4j-open-ai-spring-boot-starter` — OpenAI (GPT)
+  - `langchain4j-google-ai-gemini-spring-boot-starter` — Google Gemini
+  - `langchain4j-ollama-spring-boot-starter` — Ollama (local)
+- Soporte de proveedores IA (todos disponibles también por REST directo como fallback):
   - **OpenAI** (GPT) — vía LangChain4j `ChatModel` (recomendado) o REST directo
-  - **Google Gemini** — REST directo a la API de Google AI
-  - **Ollama** (local) — endpoint compatible con OpenAI
+  - **Google Gemini** — vía LangChain4j `ChatModel` (recomendado) o REST directo
+  - **Ollama** (local) — vía LangChain4j `ChatModel` (recomendado) o REST directo
 - Generación de artículos con HTML semántico, metadatos SEO completos, Schema.org JSON-LD y Open Graph.
 - Algoritmo de deduplicación de títulos en dos fases.
 - Reintentos automáticos con _exponential back-off_ para errores transitorios de red.
@@ -45,10 +49,10 @@ Integración nativa con **LangChain4j** (OpenAI), además de soporte para **Goog
 ArticleGeneratorService          ← orquesta el pipeline completo
   ├─ PromptBuilderService        ← construye los prompts para la IA en el idioma indicado
   ├─ AiClientService             ← cliente HTTP para los proveedores IA
-  │    ├─ LangChain4j ChatModel  ← OpenAI (recomendado, opcional)
-  │    ├─ OpenAI REST directo    ← fallback cuando LangChain4j no está configurado
-  │    ├─ Google Gemini REST     ← API de Google AI
-  │    └─ Ollama REST            ← endpoint OpenAI-compatible local
+  │    ├─ LangChain4j ChatModel  ← OpenAI, Google Gemini u Ollama (recomendado, opcional)
+  │    ├─ OpenAI REST directo    ← fallback sin LangChain4j
+  │    ├─ Google Gemini REST     ← fallback sin LangChain4j
+  │    └─ Ollama REST            ← fallback sin LangChain4j (endpoint OpenAI-compatible)
   ├─ SeoService                  ← genera canonical URL y Schema.org TechArticle JSON-LD
   └─ TextUtils                   ← slugificación, similitud de títulos, recuento de palabras
 ```
@@ -59,7 +63,7 @@ ArticleGeneratorService          ← orquesta el pipeline completo
 | `AiClientService` | Llamadas a la IA (LangChain4j / REST directo) y extracción de JSON |
 | `PromptBuilderService` | Construcción de prompts multilingüe con instrucciones SEO |
 | `SeoService` | URLs canónicas y datos estructurados Schema.org |
-| `TextUtils` | Slugs, similitud de títulos (Jaccard), conteo de palabras, tiempo de lectura |
+| `TextUtils` | Slugs, similitud de títulos (LCS ratio), conteo de palabras, tiempo de lectura |
 | `ArticleGeneratorProperties` | Propiedades `@ConfigurationProperties(prefix = "article-generator")` |
 | `Article` | DTO de salida con contenido + metadatos SEO + Open Graph + estadísticas |
 | `ArticleRequest` | DTO de entrada para la generación |
@@ -111,13 +115,28 @@ En el `pom.xml` del **otro proyecto**:
 </dependency>
 ```
 
-> Si quieres usar LangChain4j para OpenAI, añade también su starter en el proyecto consumidor
-> (el starter lo declara como dependencia `optional`):
+> Si quieres usar LangChain4j, añade también el starter del proveedor deseado en el proyecto consumidor
+> (el starter los declara como dependencias `optional`):
 >
 > ```xml
+> <!-- OpenAI -->
 > <dependency>
 >     <groupId>dev.langchain4j</groupId>
 >     <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+>     <version>1.0.0-beta5</version>
+> </dependency>
+>
+> <!-- Google Gemini -->
+> <dependency>
+>     <groupId>dev.langchain4j</groupId>
+>     <artifactId>langchain4j-google-ai-gemini-spring-boot-starter</artifactId>
+>     <version>1.0.0-beta5</version>
+> </dependency>
+>
+> <!-- Ollama -->
+> <dependency>
+>     <groupId>dev.langchain4j</groupId>
+>     <artifactId>langchain4j-ollama-spring-boot-starter</artifactId>
 >     <version>1.0.0-beta5</version>
 > </dependency>
 > ```
@@ -146,12 +165,47 @@ article-generator:
 ```
 
 > El starter detecta automáticamente el bean `ChatModel` creado por la autoconfiguración de LangChain4j
-> (`langchain4j.open-ai.chat-model.*`) y lo inyecta en `AiClientService`.
+> y lo inyecta en `AiClientService`.
 > No es necesario definir `article-generator.provider` ni `article-generator.openai-api-key`.
 >
 > LangChain4j gestiona el modelo, la clave API, la temperatura, el timeout y el logging de forma transparente.
 
-#### Opción B — OpenAI REST directo (sin LangChain4j)
+#### Opción B — Google Gemini vía **LangChain4j** ✅ Recomendado
+
+```yaml
+langchain4j:
+  google-ai-gemini:
+    chat-model:
+      api-key: ${GEMINI_API_KEY}
+      model-name: gemini-2.0-flash
+      temperature: 0.7
+      log-requests: true
+      log-responses: true
+
+article-generator:
+  site: https://mi-blog.com
+  author-username: adminUser
+  language: es
+```
+
+#### Opción C — Ollama vía **LangChain4j** ✅ Recomendado
+
+```yaml
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: http://localhost:11434
+      model-name: llama3
+      temperature: 0.7
+      timeout: PT120S
+
+article-generator:
+  site: https://mi-blog.com
+  author-username: adminUser
+  language: es
+```
+
+#### Opción D — OpenAI REST directo (sin LangChain4j)
 
 ```yaml
 article-generator:
@@ -163,7 +217,7 @@ article-generator:
   language: es
 ```
 
-#### Opción C — Google Gemini
+#### Opción E — Google Gemini REST directo (sin LangChain4j)
 
 ```yaml
 article-generator:
@@ -175,7 +229,7 @@ article-generator:
   language: es
 ```
 
-#### Opción D — Ollama (local)
+#### Opción F — Ollama REST directo (sin LangChain4j)
 
 ```yaml
 article-generator:
@@ -191,9 +245,9 @@ article-generator:
 
 Si no se especifica `article-generator.provider` (o se deja en `AUTO`), el starter aplica la siguiente lógica:
 
-1. Si hay un bean `ChatModel` de LangChain4j → **OpenAI vía LangChain4j**
-2. Si `article-generator.model` empieza por `gemini-` → **Gemini**
-3. Si `article-generator.ollama-base-url` está definido → **Ollama**
+1. Si hay un bean `ChatModel` de LangChain4j → **proveedor configurado vía LangChain4j** (OpenAI, Gemini u Ollama según el starter que hayas añadido)
+2. Si `article-generator.model` empieza por `gemini-` → **Gemini REST directo**
+3. Si `article-generator.ollama-base-url` está definido → **Ollama REST directo**
 4. Si no → **OpenAI REST directo** (requiere `article-generator.openai-api-key`)
 
 ### 4) Inyectar y usar `ArticleGeneratorService`
@@ -227,6 +281,7 @@ public class ArticleController {
                 .category(input.category())
                 .subcategory(input.subcategory())
                 .tag(input.tag())
+                .title(input.title())           // optional: forces an exact title
                 .language(input.language())
                 .site(input.site())
                 .authorUsername(input.authorUsername())
@@ -240,6 +295,7 @@ public class ArticleController {
             String category,
             String subcategory,
             String tag,
+            String title,           // optional: if provided, the AI generates the body around this title
             String language,
             String site,
             String authorUsername,
@@ -314,7 +370,7 @@ El starter aplica un proceso en **dos fases** para garantizar títulos únicos:
 **Fase 1 — Generación completa**
 
 1. La IA genera el artículo completo: título, resumen, cuerpo HTML y palabras clave.
-2. Se calcula la similitud del título generado con cada entrada de `avoidTitles` (similitud de Jaccard sobre tokens de palabras).
+2. Se calcula la similitud del título generado con cada entrada de `avoidTitles` usando la métrica de similitud LCS (`2 * LCS / (|a| + |b|)`, equivalente a Python's `SequenceMatcher.ratio()`).
 3. Si la similitud es inferior al umbral (`similarity-threshold`, defecto `0.86`), el artículo se acepta → **fin**.
 4. Si el título es demasiado similar, se activa la Fase 2.
 
@@ -325,6 +381,8 @@ El starter aplica un proceso en **dos fases** para garantizar títulos únicos:
 3. Cada título candidato se comprueba contra `avoidTitles`.
 4. El primer título que supere la comprobación se aplica (se actualiza el `<h1>` en el cuerpo).
 5. Si ningún intento produce un título único, se lanza una excepción.
+
+> La deduplicación de fases se omite por completo cuando se proporciona un `title` explícito en el `ArticleRequest`.
 
 ---
 
@@ -388,6 +446,21 @@ curl -X POST 'http://localhost:8080/api/articles/generate' \
 
 ---
 
+## Modelo de entrada `ArticleRequest`
+
+| Campo | Tipo | Obligatorio | Descripción |
+|-------|------|-------------|-------------|
+| `category` | `String` | ✅ Sí | Categoría del artículo |
+| `subcategory` | `String` | No | Subcategoría (defecto: `"General"`) |
+| `tag` | `String` | No | Etiqueta / tema del artículo |
+| `title` | `String` | No | Título exacto a utilizar; si se proporciona, la IA genera el cuerpo alrededor de este título y se omite la deduplicación |
+| `authorUsername` | `String` | No | Sobreescribe `article-generator.author-username` para esta petición |
+| `site` | `String` | No | Sobreescribe `article-generator.site` para esta petición |
+| `language` | `String` | No | Código ISO 639-1 (p.e. `es`, `en`); sobreescribe `article-generator.language` |
+| `avoidTitles` | `List<String>` | No | Títulos a evitar en la deduplicación (solo se aplica cuando no se especifica `title`) |
+
+---
+
 ## Modelo de respuesta `Article`
 
 | Campo | Tipo | Descripción |
@@ -423,5 +496,6 @@ curl -X POST 'http://localhost:8080/api/articles/generate' \
 - Campo obligatorio en `ArticleRequest`: `category`.
 - Si no envías `subcategory`, usa `General`.
 - Si no envías `language`, `site` o `authorUsername`, se aplican los valores de `application.yml`.
-- El starter aplica deduplicación de títulos usando `avoidTitles`.
+- Si envías `title`, la IA genera el cuerpo del artículo alrededor de ese título exacto (se omite la deduplicación de fases).
+- El starter aplica deduplicación de títulos usando `avoidTitles` (solo cuando no se especifica `title`).
 - Todos los beans son `@ConditionalOnMissingBean`: el proyecto consumidor puede sobreescribir cualquiera.
