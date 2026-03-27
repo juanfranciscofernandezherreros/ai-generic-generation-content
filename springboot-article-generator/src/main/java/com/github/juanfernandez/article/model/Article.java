@@ -8,8 +8,8 @@ import java.util.Map;
 /**
  * Generated article with full SEO metadata.
  *
- * <p>All fields mirror the JSON document produced by the Python {@code generateArticle.py} tool
- * so that articles can be consumed interchangeably by existing consumers.
+ * <p>All fields are serialized to JSON by Jackson ({@code @JsonInclude(NON_NULL)}) and can be
+ * consumed directly by REST clients or stored in a document database.
  *
  * <p>The {@code structuredData} field contains Schema.org {@code TechArticle} JSON-LD data
  * that can be inlined in a {@code <script type="application/ld+json">} tag.
