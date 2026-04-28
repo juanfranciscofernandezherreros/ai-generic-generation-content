@@ -6,8 +6,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.aigen</groupId>
-    <artifactId>article-generator-spring-boot-starter</artifactId>
-    <version>1.0.1</version>
+    <artifactId>ai-generic-tool</artifactId>
+    <version>0.1.0</version>
     <packaging>jar</packaging>
 
     <name>Article &amp; Question Generator Spring Boot Starter</name>
