@@ -1,6 +1,7 @@
 package com.github.juanfernandez.article;
 
 import com.github.juanfernandez.article.pregunta.application.PreguntaGeneratorService;
+import com.github.juanfernandez.article.pregunta.config.PreguntaGeneratorProperties;
 import com.github.juanfernandez.article.pregunta.infrastructure.persistence.JpaPreguntaRepository;
 import com.github.juanfernandez.article.pregunta.port.in.PreguntaGeneratorPort;
 import com.github.juanfernandez.article.pregunta.port.out.PreguntaRepositoryPort;
@@ -9,6 +10,7 @@ import com.github.juanfernandez.article.shared.util.JsonUtils;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -41,14 +43,17 @@ import org.springframework.context.annotation.Bean;
  * automatically when the {@code Pregunta} entity is scanned).
  */
 @AutoConfiguration(after = {AiAutoConfiguration.class, ArticleGeneratorAutoConfiguration.class})
+@EnableConfigurationProperties(PreguntaGeneratorProperties.class)
 public class PreguntaGeneratorAutoConfiguration {
 
     /**
      * Registers {@link PreguntaGeneratorService} when a {@link JpaPreguntaRepository} bean is
      * present and no {@link PreguntaGeneratorPort} bean has been defined by the application.
      *
-     * @param aiPort               shared AI port bean from {@link ArticleGeneratorAutoConfiguration}
+     * @param aiPort               shared AI port bean from {@link AiAutoConfiguration}
      * @param preguntaRepository   Spring Data JPA repository for the {@code preguntas} table
+     * @param jsonUtils            shared JSON utility for parsing AI responses
+     * @param preguntaProperties   externalised prompts and tuning parameters
      * @return fully configured {@link PreguntaGeneratorService}
      */
     @Bean
@@ -56,7 +61,8 @@ public class PreguntaGeneratorAutoConfiguration {
     @ConditionalOnBean(JpaPreguntaRepository.class)
     public PreguntaGeneratorService preguntaGeneratorService(AiPort aiPort,
                                                               JpaPreguntaRepository preguntaRepository,
-                                                              JsonUtils jsonUtils) {
-        return new PreguntaGeneratorService(aiPort, preguntaRepository, jsonUtils);
+                                                              JsonUtils jsonUtils,
+                                                              PreguntaGeneratorProperties preguntaProperties) {
+        return new PreguntaGeneratorService(aiPort, preguntaRepository, jsonUtils, preguntaProperties);
     }
 }

@@ -106,6 +106,88 @@ public class Article {
 
     public Article() {}
 
+    private Article(Builder b) {
+        this.title           = b.title;
+        this.slug            = b.slug;
+        this.summary         = b.summary;
+        this.body            = b.body;
+        this.category        = b.category;
+        this.tags            = b.tags;
+        this.author          = b.author;
+        this.status          = b.status;
+        this.isVisible       = b.isVisible;
+        this.keywords        = b.keywords;
+        this.metaTitle       = b.metaTitle;
+        this.metaDescription = b.metaDescription;
+        this.canonicalUrl    = b.canonicalUrl;
+        this.structuredData  = b.structuredData;
+        this.ogTitle         = b.ogTitle;
+        this.ogDescription   = b.ogDescription;
+        this.ogType          = b.ogType;
+        this.wordCount       = b.wordCount;
+        this.readingTime     = b.readingTime;
+        this.publishDate     = b.publishDate;
+        this.createdAt       = b.createdAt;
+        this.updatedAt       = b.updatedAt;
+        this.generatedAt     = b.generatedAt;
+    }
+
+    // ── Builder ───────────────────────────────────────────────────────────
+
+    public static Builder builder() { return new Builder(); }
+
+    public static final class Builder {
+        private String title;
+        private String slug;
+        private String summary;
+        private String body;
+        private String category;
+        private java.util.List<String> tags;
+        private String author;
+        private String status = "published";
+        private boolean isVisible = true;
+        private java.util.List<String> keywords;
+        private String metaTitle;
+        private String metaDescription;
+        private String canonicalUrl;
+        private java.util.Map<String, Object> structuredData;
+        private String ogTitle;
+        private String ogDescription;
+        private String ogType = "article";
+        private int wordCount;
+        private int readingTime;
+        private String publishDate;
+        private String createdAt;
+        private String updatedAt;
+        private String generatedAt;
+
+        public Builder title(String v)                              { this.title = v; return this; }
+        public Builder slug(String v)                               { this.slug = v; return this; }
+        public Builder summary(String v)                            { this.summary = v; return this; }
+        public Builder body(String v)                               { this.body = v; return this; }
+        public Builder category(String v)                           { this.category = v; return this; }
+        public Builder tags(java.util.List<String> v)               { this.tags = v; return this; }
+        public Builder author(String v)                             { this.author = v; return this; }
+        public Builder status(String v)                             { this.status = v; return this; }
+        public Builder visible(boolean v)                           { this.isVisible = v; return this; }
+        public Builder keywords(java.util.List<String> v)           { this.keywords = v; return this; }
+        public Builder metaTitle(String v)                          { this.metaTitle = v; return this; }
+        public Builder metaDescription(String v)                    { this.metaDescription = v; return this; }
+        public Builder canonicalUrl(String v)                       { this.canonicalUrl = v; return this; }
+        public Builder structuredData(java.util.Map<String, Object> v) { this.structuredData = v; return this; }
+        public Builder ogTitle(String v)                            { this.ogTitle = v; return this; }
+        public Builder ogDescription(String v)                      { this.ogDescription = v; return this; }
+        public Builder ogType(String v)                             { this.ogType = v; return this; }
+        public Builder wordCount(int v)                             { this.wordCount = v; return this; }
+        public Builder readingTime(int v)                           { this.readingTime = v; return this; }
+        public Builder publishDate(String v)                        { this.publishDate = v; return this; }
+        public Builder createdAt(String v)                          { this.createdAt = v; return this; }
+        public Builder updatedAt(String v)                          { this.updatedAt = v; return this; }
+        public Builder generatedAt(String v)                        { this.generatedAt = v; return this; }
+
+        public Article build() { return new Article(this); }
+    }
+
     // ── Getters & Setters ─────────────────────────────────────────────────
 
     public String getTitle() { return title; }

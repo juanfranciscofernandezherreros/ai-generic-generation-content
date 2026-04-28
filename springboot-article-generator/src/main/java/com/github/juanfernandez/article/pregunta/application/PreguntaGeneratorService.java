@@ -1,6 +1,7 @@
 package com.github.juanfernandez.article.pregunta.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.github.juanfernandez.article.pregunta.config.PreguntaGeneratorProperties;
 import com.github.juanfernandez.article.pregunta.domain.Pregunta;
 import com.github.juanfernandez.article.pregunta.port.in.PreguntaGeneratorPort;
 import com.github.juanfernandez.article.pregunta.port.out.PreguntaRepositoryPort;
@@ -16,62 +17,30 @@ import java.util.Map;
 /**
  * Application service that implements the {@link PreguntaGeneratorPort} use case.
  *
- * <p>Reads all existing questions from the {@code preguntas} table via {@link PreguntaRepositoryPort},
- * uses the configured AI provider via {@link AiPort} to generate a new unique multilingual question
- * (Catalan, English, Spanish, French), and persists it.
+ * <p>Reads all existing questions from the {@code preguntas} table via
+ * {@link PreguntaRepositoryPort}, asks the configured AI provider via {@link AiPort} for a
+ * new unique multilingual question, and persists it.
  *
- * <p>The AI is asked to return a JSON object with the following structure:
- * <pre>{@code
- * {
- *   "campo": "camelCaseIdentifier",
- *   "texto": {
- *     "ca": "Pregunta en català",
- *     "en": "Question in English",
- *     "es": "Pregunta en español",
- *     "fr": "Question en français"
- *   }
- * }
- * }</pre>
- *
- * <p>Example usage from a consuming Spring Boot application:
- * <pre>{@code
- * @Autowired
- * private PreguntaGeneratorPort preguntaGeneratorPort;
- *
- * Pregunta nueva = preguntaGeneratorPort.generateAndSave();
- * }</pre>
+ * <p>System message and prompt templates can be overridden via
+ * {@link PreguntaGeneratorProperties}.
  */
 public class PreguntaGeneratorService implements PreguntaGeneratorPort {
 
     private static final Logger log = LoggerFactory.getLogger(PreguntaGeneratorService.class);
 
-    /** Maximum number of existing Spanish question texts included in the AI prompt. */
-    private static final int MAX_CONTEXT_QUESTIONS = 100;
-
-    private static final String SYSTEM_MSG =
-            "Eres un experto en declaraciones de la renta (IRPF) y generas preguntas para un asistente fiscal. "
-            + "Tu tarea es crear UNA NUEVA pregunta en cuatro idiomas (ca, en, es, fr) que NO exista ya en la lista "
-            + "proporcionada. "
-            + "Devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta, sin texto adicional:\n"
-            + "{\n"
-            + "  \"campo\": \"camelCaseIdentifier\",\n"
-            + "  \"texto\": {\n"
-            + "    \"ca\": \"...\",\n"
-            + "    \"en\": \"...\",\n"
-            + "    \"es\": \"...\",\n"
-            + "    \"fr\": \"...\"\n"
-            + "  }\n"
-            + "}";
-
     private final AiPort aiPort;
     private final JsonUtils jsonUtils;
     private final PreguntaRepositoryPort preguntaRepository;
+    private final PreguntaGeneratorProperties properties;
 
-    public PreguntaGeneratorService(AiPort aiPort, PreguntaRepositoryPort preguntaRepository,
-                                     JsonUtils jsonUtils) {
+    public PreguntaGeneratorService(AiPort aiPort,
+                                    PreguntaRepositoryPort preguntaRepository,
+                                    JsonUtils jsonUtils,
+                                    PreguntaGeneratorProperties properties) {
         this.aiPort = aiPort;
         this.jsonUtils = jsonUtils;
         this.preguntaRepository = preguntaRepository;
+        this.properties = properties;
     }
 
     // ── PreguntaGeneratorPort implementation ──────────────────────────────
@@ -86,32 +55,35 @@ public class PreguntaGeneratorService implements PreguntaGeneratorPort {
 
         String prompt = buildPrompt(existing);
 
-        String rawResponse = aiPort.generate(SYSTEM_MSG, prompt, 400, 0.8);
-        String jsonBlock   = extractJsonBlock(rawResponse);
-        JsonNode data      = safeJsonParse(jsonBlock);
+        String rawResponse = aiPort.generate(
+                properties.getSystemMsg(),
+                prompt,
+                properties.getMaxTokens(),
+                properties.getTemperature());
+        String jsonBlock = jsonUtils.extractJsonBlock(rawResponse);
+        JsonNode data    = jsonUtils.safeJsonParse(jsonBlock);
 
         String campo = textNode(data, "campo");
         if (campo.isBlank()) {
             throw new RuntimeException(
                     "AI response is missing the 'campo' field. Raw response preview: "
-                    + rawResponse.substring(0, Math.min(300, rawResponse.length())));
+                    + preview(rawResponse));
         }
 
         JsonNode textoNode = data.path("texto");
         if (textoNode.isMissingNode() || !textoNode.isObject()) {
             throw new RuntimeException(
                     "AI response is missing the 'texto' object. Raw response preview: "
-                    + rawResponse.substring(0, Math.min(300, rawResponse.length())));
+                    + preview(rawResponse));
         }
 
         Map<String, String> texto = new LinkedHashMap<>();
-        for (String lang : new String[]{"ca", "en", "es", "fr"}) {
+        for (String lang : properties.getLanguages()) {
             String val = textoNode.path(lang).asText("").strip();
             if (val.isBlank()) {
                 throw new RuntimeException(
                         "AI response is missing the '" + lang + "' translation in 'texto'. "
-                        + "Raw response preview: "
-                        + rawResponse.substring(0, Math.min(300, rawResponse.length())));
+                        + "Raw response preview: " + preview(rawResponse));
             }
             texto.put(lang, val);
         }
@@ -122,13 +94,15 @@ public class PreguntaGeneratorService implements PreguntaGeneratorPort {
         }
 
         String generatedEs = texto.get("es");
-        boolean textDuplicate = existing.stream()
-                .map(p -> p.getTexto() != null ? p.getTexto().get("es") : null)
-                .filter(t -> t != null)
-                .anyMatch(t -> t.equalsIgnoreCase(generatedEs));
-        if (textDuplicate) {
-            throw new RuntimeException(
-                    "AI generated a Spanish question text that already exists: \"" + generatedEs + "\"");
+        if (generatedEs != null) {
+            boolean textDuplicate = existing.stream()
+                    .map(p -> p.getTexto() != null ? p.getTexto().get("es") : null)
+                    .filter(t -> t != null)
+                    .anyMatch(t -> t.equalsIgnoreCase(generatedEs));
+            if (textDuplicate) {
+                throw new RuntimeException(
+                        "AI generated a Spanish question text that already exists: \"" + generatedEs + "\"");
+            }
         }
 
         int nextOrden = existing.stream()
@@ -148,32 +122,23 @@ public class PreguntaGeneratorService implements PreguntaGeneratorPort {
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private String buildPrompt(List<Pregunta> existing) {
-        StringBuilder sb = new StringBuilder();
-
         if (existing.isEmpty()) {
-            sb.append("No hay preguntas registradas todavía. Crea la primera pregunta para el asistente fiscal del IRPF.");
-        } else {
-            sb.append("Las siguientes preguntas YA EXISTEN en el cuestionario fiscal (campo: texto en español). "
-                    + "NO puedes repetir ninguna de ellas ni crear algo semánticamente equivalente:\n\n");
-            existing.stream()
-                    .limit(MAX_CONTEXT_QUESTIONS)
-                    .forEach(p -> {
-                        String es = p.getTexto() != null ? p.getTexto().get("es") : "";
-                        sb.append("- ").append(p.getCampo()).append(": ").append(es).append("\n");
-                    });
-            sb.append("\nGenera UNA NUEVA pregunta diferente a todas las anteriores, "
-                    + "relevante para la declaración de la renta española (IRPF).");
+            return properties.getEmptyPrompt();
         }
 
-        return sb.toString();
+        StringBuilder bullets = new StringBuilder();
+        existing.stream()
+                .limit(properties.getMaxContextQuestions())
+                .forEach(p -> {
+                    String es = p.getTexto() != null ? p.getTexto().get("es") : "";
+                    bullets.append("- ").append(p.getCampo()).append(": ").append(es).append("\n");
+                });
+        return properties.getExistingPromptTemplate().replace("{existing}", bullets.toString());
     }
 
-    private String extractJsonBlock(String text) {
-        return jsonUtils.extractJsonBlock(text);
-    }
-
-    private JsonNode safeJsonParse(String json) {
-        return jsonUtils.safeJsonParse(json);
+    private static String preview(String text) {
+        if (text == null) return "";
+        return text.substring(0, Math.min(300, text.length()));
     }
 
     private static String textNode(JsonNode node, String field) {

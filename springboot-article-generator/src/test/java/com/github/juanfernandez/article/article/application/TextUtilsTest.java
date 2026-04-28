@@ -1,6 +1,4 @@
-package com.github.juanfernandez.article.service;
-
-import com.github.juanfernandez.article.article.application.TextUtils;
+package com.github.juanfernandez.article.article.application;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

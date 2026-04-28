@@ -75,6 +75,13 @@ public class ArticleGeneratorProperties implements AiConfig, RetryConfig {
     /** Default article language (ISO 639-1 code). Default: {@code es}. */
     private String language = "es";
 
+    /**
+     * Optional directory where generated articles are persisted as {@code <slug>.json}.
+     * When unset (default) generated articles are returned to the caller but not written
+     * to disk.
+     */
+    private String outputDir;
+
     // ── AI generation parameters ──────────────────────────────────────────
 
     /** Temperature for article body generation (0.0 – 1.0). Default: {@code 0.7}. */
@@ -190,6 +197,9 @@ public class ArticleGeneratorProperties implements AiConfig, RetryConfig {
 
     public String getLanguage() { return language; }
     public void setLanguage(String language) { this.language = language; }
+
+    public String getOutputDir() { return outputDir; }
+    public void setOutputDir(String outputDir) { this.outputDir = outputDir; }
 
     public double getTemperatureArticle() { return temperatureArticle; }
     public void setTemperatureArticle(double temperatureArticle) { this.temperatureArticle = temperatureArticle; }
