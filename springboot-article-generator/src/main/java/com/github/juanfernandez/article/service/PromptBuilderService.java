@@ -73,6 +73,12 @@ public class PromptBuilderService {
     /**
      * Builds the full article generation prompt (title + summary + HTML body + keywords).
      *
+     * <p>When {@code article-generator.generation-prompt-template} is set in the YAML/properties
+     * file that template is used and the following placeholders are replaced:
+     * {@code {lang}}, {@code {topic}}, {@code {parentName}}, {@code {subcatName}},
+     * {@code {titleInstruction}}, {@code {avoidBlock}}.
+     * Otherwise the built-in default prompt is used.
+     *
      * @param parentName   category name (e.g. {@code "Spring Boot"})
      * @param subcatName   sub-category name (e.g. {@code "Spring Security"})
      * @param tagText      topic / tag (may be {@code null})
@@ -101,6 +107,17 @@ public class PromptBuilderService {
         String avoidBlock = buildAvoidBlock(avoidTitles,
                 "\nEvita títulos iguales o muy similares a: ", "\"; \"", "\"", "\"");
 
+        String template = properties.getGenerationPromptTemplate();
+        if (template != null && !template.isBlank()) {
+            return template
+                    .replace("{lang}", lang)
+                    .replace("{topic}", topic)
+                    .replace("{parentName}", parentName)
+                    .replace("{subcatName}", subcatName)
+                    .replace("{titleInstruction}", titleInstruction)
+                    .replace("{avoidBlock}", avoidBlock);
+        }
+
         return "Escribe un artículo técnico SEO completo en " + lang + " " + topic
                 + "(categoría: \"" + parentName + "\", subcategoría: \"" + subcatName + "\").\n"
                 + "IMPORTANTE: debes generar un ARTÍCULO con contenido explicativo extenso, NO un cuestionario ni una lista de preguntas.\n"
@@ -128,6 +145,12 @@ public class PromptBuilderService {
      * Builds a lightweight title-only prompt (much cheaper than the full article prompt).
      * Used in Phase 2 of the deduplication loop.
      *
+     * <p>When {@code article-generator.title-prompt-template} is set in the YAML/properties
+     * file that template is used and the following placeholders are replaced:
+     * {@code {lang}}, {@code {topic}}, {@code {parentName}}, {@code {subcatName}},
+     * {@code {maxLen}}, {@code {avoidBlock}}.
+     * Otherwise the built-in default prompt is used.
+     *
      * @param parentName  category name
      * @param subcatName  sub-category name
      * @param tagText     topic / tag (may be {@code null})
@@ -148,6 +171,17 @@ public class PromptBuilderService {
 
         String avoidBlock = buildAvoidBlock(avoidTitles,
                 "\nEvita títulos iguales o muy similares a cualquiera de estos: ", "\"; \"", "\"", "\"");
+
+        String template = properties.getTitlePromptTemplate();
+        if (template != null && !template.isBlank()) {
+            return template
+                    .replace("{lang}", lang)
+                    .replace("{topic}", topic)
+                    .replace("{parentName}", parentName)
+                    .replace("{subcatName}", subcatName)
+                    .replace("{maxLen}", String.valueOf(maxLen))
+                    .replace("{avoidBlock}", avoidBlock);
+        }
 
         return "Genera un título de artículo técnico en " + lang + " " + topic
                 + "(categoría: \"" + parentName + "\", subcategoría: \"" + subcatName + "\").\n"
