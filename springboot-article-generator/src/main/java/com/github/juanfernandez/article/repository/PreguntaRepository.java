@@ -3,7 +3,6 @@ package com.github.juanfernandez.article.repository;
 import com.github.juanfernandez.article.model.Pregunta;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -19,7 +18,7 @@ public interface PreguntaRepository extends JpaRepository<Pregunta, Long> {
      * @param categoria category name to filter by
      * @return list of matching {@link Pregunta} entities
      */
-    List<Pregunta> findByCategoriaIgnoreCase(@Param("categoria") String categoria);
+    List<Pregunta> findByCategoriaIgnoreCase(String categoria);
 
     /**
      * Returns every question text (the {@code pregunta} column only) from the table.

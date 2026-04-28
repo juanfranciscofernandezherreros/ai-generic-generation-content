@@ -40,7 +40,7 @@ public class Pregunta {
 
     /** Timestamp when the question was created. */
     @Column(name = "creada_en", nullable = false)
-    private LocalDateTime creadaEn = LocalDateTime.now();
+    private LocalDateTime creadaEn;
 
     // ── Constructors ──────────────────────────────────────────────────────
 

@@ -32,6 +32,9 @@ public class PreguntaGeneratorService {
 
     private static final Logger log = LoggerFactory.getLogger(PreguntaGeneratorService.class);
 
+    /** Maximum number of existing questions included in the AI prompt to avoid exceeding token limits. */
+    private static final int MAX_CONTEXT_QUESTIONS = 100;
+
     private static final String SYSTEM_MSG =
             "Eres un experto generador de preguntas técnicas y educativas. "
             + "Tu tarea es crear una pregunta nueva, clara y útil que no exista ya en la lista proporcionada. "
@@ -54,6 +57,8 @@ public class PreguntaGeneratorService {
      *
      * @param categoria optional category for the new question; may be {@code null}
      * @return the newly created and persisted {@link Pregunta}
+     * @throws RuntimeException if the AI returns an empty question
+     * @throws RuntimeException if the AI generates a question that already exists in the database
      */
     public Pregunta generateAndSave(String categoria) {
         List<String> existing = preguntaRepository.findAllPreguntaTexts();
@@ -66,7 +71,10 @@ public class PreguntaGeneratorService {
                 .strip();
 
         if (generated.isBlank()) {
-            throw new RuntimeException("AI returned an empty question.");
+            throw new RuntimeException(
+                    "AI returned an empty question"
+                    + (categoria != null && !categoria.isBlank() ? " for category: " + categoria : "")
+                    + ". This may indicate an issue with the AI service or prompt configuration.");
         }
 
         // Basic deduplication check (case-insensitive exact match)
@@ -106,7 +114,7 @@ public class PreguntaGeneratorService {
         } else {
             sb.append("Las siguientes preguntas YA EXISTEN. NO puedes repetir ninguna de ellas:\n");
             existing.stream()
-                    .limit(100)   // cap the context to avoid exceeding token limits
+                    .limit(MAX_CONTEXT_QUESTIONS)
                     .forEach(q -> sb.append("- ").append(q).append("\n"));
             sb.append("\nGenera UNA NUEVA pregunta que sea diferente a todas las anteriores.");
         }
