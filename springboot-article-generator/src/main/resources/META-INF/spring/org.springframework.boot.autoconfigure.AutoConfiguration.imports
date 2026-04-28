@@ -1,3 +1,3 @@
-com.github.juanfernandez.article.AiAutoConfiguration
-com.github.juanfernandez.article.ArticleGeneratorAutoConfiguration
-com.github.juanfernandez.article.PreguntaGeneratorAutoConfiguration
+io.github.aigen.AiAutoConfiguration
+io.github.aigen.ArticleGeneratorAutoConfiguration
+io.github.aigen.PreguntaGeneratorAutoConfiguration
