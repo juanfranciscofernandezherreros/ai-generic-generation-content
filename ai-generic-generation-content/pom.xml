@@ -7,7 +7,7 @@
 
     <groupId>io.github.aigen</groupId>
     <artifactId>ai-generic-generation-content</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.1</version>
     <packaging>jar</packaging>
 
     <name>Article &amp; Question Generator Spring Boot Starter</name>
