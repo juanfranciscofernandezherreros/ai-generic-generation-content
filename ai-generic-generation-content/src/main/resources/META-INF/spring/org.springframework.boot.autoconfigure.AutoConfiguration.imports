@@ -1,4 +1,3 @@
 io.github.aigen.AiAutoConfiguration
-io.github.aigen.AiProvider
 io.github.aigen.ArticleGeneratorAutoConfiguration
 io.github.aigen.PreguntaGeneratorAutoConfiguration
