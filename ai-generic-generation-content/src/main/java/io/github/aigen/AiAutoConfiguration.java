@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aigen.article.config.ArticleGeneratorProperties;
 import io.github.aigen.shared.ai.port.AiPort;
 import io.github.aigen.shared.ai.infrastructure.*;
+import io.github.aigen.shared.util.JsonUtils;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +19,12 @@ public class AiAutoConfiguration {
     @ConditionalOnMissingBean
     public ObjectMapper objectMapper() {
         return new ObjectMapper();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public JsonUtils jsonUtils(ObjectMapper objectMapper) {
+        return new JsonUtils(objectMapper);
     }
 
     // --- AISLAMIENTO TOTAL DE LANGCHAIN4J ---
