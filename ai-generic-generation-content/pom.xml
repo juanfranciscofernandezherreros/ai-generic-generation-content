@@ -39,7 +39,7 @@
         <java.version>17</java.version>
         <!-- Prevent the Spring Boot maven plugin from creating an executable fat-jar -->
         <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
-        <langchain4j.version>1.0.0-beta5</langchain4j.version>
+        <langchain4j.version>1.14.0-beta24</langchain4j.version>
     </properties>
 
     <dependencies>
